@@ -7,8 +7,8 @@ if not os.path.exists('./npydata'):
 
 '''please set your dataset path'''
 try:
-    shanghaiAtrain_path = '/home/dkliang/projects/synchronous/dataset/ShanghaiTech/part_A_final/train_data/images_crop/'
-    shanghaiAtest_path = '/home/dkliang/projects/synchronous/dataset/ShanghaiTech/part_A_final/test_data/images_crop/'
+    shanghaiAtrain_path = '/home/ss3060/work/2023bigdataproject/data/ShanghaiTech/part_A_final/train_data/images_crop/'
+    shanghaiAtest_path = '/home/ss3060/work/2023bigdataproject/data/ShanghaiTech/part_A_final/test_data/images_crop/'
 
     train_list = []
     for filename in os.listdir(shanghaiAtrain_path):
@@ -31,8 +31,8 @@ except:
 
 
 try:
-    shanghaiBtrain_path = '/home/dkliang/projects/synchronous/dataset/ShanghaiTech/part_B_final/train_data/images_crop/'
-    shanghaiBtest_path = '/home/dkliang/projects/synchronous/dataset/ShanghaiTech/part_B_final/test_data/images_crop/'
+    shanghaiBtrain_path = '/home/ss3060/work/2023bigdataproject/data/ShanghaiTech/part_B_final/train_data/images_crop/'
+    shanghaiBtest_path = '/home/ss3060/work/2023bigdataproject/data/ShanghaiTech/part_B_final/test_data/images_crop/'
 
     train_list = []
     for filename in os.listdir(shanghaiBtrain_path):
