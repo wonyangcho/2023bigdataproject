@@ -44,4 +44,5 @@ class listDataset(Dataset):
 
         #임시로.-> 모델과 loss, metrics 정리되면 수정 예정 wycho
         #return fname, img, gt_count
-        return img, gt_count
+        #return img, gt_count
+        return img, 1
