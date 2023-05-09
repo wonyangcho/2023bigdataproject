@@ -19,7 +19,7 @@ from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
 
 from data import DATASET_GETTERS
-from models import WideResNet, ModelEMA
+from models.models import WideResNet, ModelEMA
 from utils import (AverageMeter, accuracy, create_loss_fn,
                    save_checkpoint, reduce_tensor, model_load_state_dict)
 
@@ -30,7 +30,7 @@ parser.add_argument('--name', type=str, required=True, help='experiment name')
 parser.add_argument('--data-path', default='./data', type=str, help='data path')
 parser.add_argument('--save-path', default='./checkpoint', type=str, help='save path')
 parser.add_argument('--dataset', default='cifar10', type=str,
-                    choices=['cifar10', 'cifar100'], help='dataset name')
+                    choices=['cifar10', 'cifar100', 'crowd'], help='dataset name')
 parser.add_argument('--num-labeled', type=int, default=4000, help='number of labeled data')
 parser.add_argument("--expand-labels", action="store_true", help="expand labels to fit eval steps")
 parser.add_argument('--total-steps', default=300000, type=int, help='number of total steps to run')
@@ -72,8 +72,14 @@ parser.add_argument("--randaug", nargs="+", type=int, help="use it like this. --
 parser.add_argument("--amp", action="store_true", help="use 16-bit (mixed) precision")
 parser.add_argument('--world-size', default=-1, type=int,
                     help='number of nodes for distributed training')
-parser.add_argument("--local_rank", type=int, default=-1,
+parser.add_argument("--local-rank", type=int, default=-1,
                     help="For distributed training: local_rank")
+
+
+parser.add_argument('--home', default="", type=str, help='home path')
+parser.add_argument('--train_l_data', default="", type=str, help='labeld data file full path')
+parser.add_argument('--train_ul_data', default="", type=str, help='unlabeld data file full path')
+parser.add_argument('--test_l_data', default="", type=str, help='test data file full path')
 
 
 def set_seed(args):
@@ -523,6 +529,8 @@ def main():
         depth, widen_factor = 28, 2
     elif args.dataset == 'cifar100':
         depth, widen_factor = 28, 8
+    else:
+        depth, widen_factor = 28, 2 #wycho 수정해야함
 
     if args.local_rank not in [-1, 0]:
         torch.distributed.barrier()

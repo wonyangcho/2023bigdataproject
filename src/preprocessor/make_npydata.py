@@ -55,13 +55,14 @@ except Exception as e:
 
 
 try:
-    qnrf_train_path = '/home/ss3060/work/2023bigdataproject/data/UCF-QNRF_ECCV18/train_data/images_crop'
-    qnrf_test_path = '/home/ss3060/work/2023bigdataproject/data/UCF-QNRF_ECCV18/test_data/images_crop'
+    qnrf_train_path = '/home/ss3060/work/2023bigdataproject/data/UCF-QNRF_ECCV18/train_data/images_crop/'
+    qnrf_test_path = '/home/ss3060/work/2023bigdataproject/data/UCF-QNRF_ECCV18/test_data/images_crop/'
 
     train_list = []
     for filename in os.listdir(qnrf_train_path):
         if filename.split('.')[1] == 'jpg':
             train_list.append(qnrf_train_path + filename)
+            print(qnrf_train_path + filename)
 
     train_list.sort()
     np.save('./npydata/qnrf_train.npy', train_list)
