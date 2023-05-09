@@ -71,6 +71,7 @@ class VisionTransformer_gap(VisionTransformer):
 
     def forward_features(self, x):
         B = x.shape[0]
+
         x = self.patch_embed(x)
 
         # stole cls_tokens impl from Phil Wang, thanks
@@ -125,10 +126,18 @@ def base_patch16_384_gap(pretrained=False, **kwargs):
         img_size=384, patch_size=16, embed_dim=768, depth=12, num_heads=12, mlp_ratio=4, qkv_bias=True,
         norm_layer=partial(nn.LayerNorm, eps=1e-6), **kwargs)
     model.default_cfg = _cfg()
-    if pretrained:
-        '''download from https://dl.fbaipublicfiles.com/deit/deit_base_patch16_384-8de9b5d1.pth'''
-        checkpoint = torch.load(
-            './Networks/deit_base_patch16_384-8de9b5d1.pth')
-        model.load_state_dict(checkpoint["model"], strict=False)
-        print("load transformer pretrained")
+    # if pretrained:
+    #     '''download from https://dl.fbaipublicfiles.com/deit/deit_base_patch16_384-8de9b5d1.pth'''
+    #     checkpoint = torch.load(
+    #         './Networks/deit_base_patch16_384-8de9b5d1.pth')
+    #     model.load_state_dict(checkpoint["model"], strict=False)
+    #     print("load transformer pretrained")
+
+    '''download from https://dl.fbaipublicfiles.com/deit/deit_base_patch16_384-8de9b5d1.pth'''
+    # checkpoint = torch.load(
+    #     './modles/deit_base_patch16_384-8de9b5d1.pth')
+    checkpoint = torch.load(
+        './models/deit_base_patch16_384-8de9b5d1.pth')
+    model.load_state_dict(checkpoint["model"], strict=False)
+    print("load transformer pretrained")
     return model

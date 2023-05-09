@@ -180,7 +180,7 @@ def train_loop(args, labeled_loader, unlabeled_loader, test_loader, finetune_dat
             t_losses_l = AverageMeter()
             t_losses_u = AverageMeter()
             t_losses_mpl = AverageMeter()
-            mean_mask = AverageMeter()
+            # mean_mask = AverageMeter()
 
         teacher_model.train()
         student_model.train()
@@ -262,8 +262,8 @@ def train_loop(args, labeled_loader, unlabeled_loader, test_loader, finetune_dat
         s_scaler.step(s_optimizer)
         s_scaler.update()
         s_scheduler.step()
-        if args.ema > 0:
-            avg_student_model.update_parameters(student_model)
+        # if args.ema > 0:
+        #     avg_student_model.update_parameters(student_model)
 
         with amp.autocast(enabled=args.amp):
             with torch.no_grad():
@@ -286,13 +286,12 @@ def train_loop(args, labeled_loader, unlabeled_loader, test_loader, finetune_dat
             #     F.cross_entropy(t_logits_us, hard_pseudo_label)
 
             t_loss_mpl = dot_product * \
-                criterion(t_logits_us, targets, hard_pseudo_label)
+                criterion(t_logits_us, hard_pseudo_label)
 
-            # test
-            # t_loss_mpl = torch.tensor(0.).to(args.device)
             t_loss = t_loss_uda + t_loss_mpl
 
-        t_scaler.scale(t_loss).backward()
+        # t_scaler.scale(t_loss).backward()
+        t_scaler.scale(t_loss.mean()).backward()  # wycho
         if args.grad_clip > 0:
             t_scaler.unscale_(t_optimizer)
             nn.utils.clip_grad_norm_(
@@ -310,21 +309,23 @@ def train_loop(args, labeled_loader, unlabeled_loader, test_loader, finetune_dat
             t_loss_l = reduce_tensor(t_loss_l.detach(), args.world_size)
             t_loss_u = reduce_tensor(t_loss_u.detach(), args.world_size)
             t_loss_mpl = reduce_tensor(t_loss_mpl.detach(), args.world_size)
-            mask = reduce_tensor(mask, args.world_size)
+            # mask = reduce_tensor(mask, args.world_size)
 
         s_losses.update(s_loss.item())
-        t_losses.update(t_loss.item())
+        # t_losses.update(t_loss.item())
+        t_losses.update(t_loss.mean().item())  # wycho
         t_losses_l.update(t_loss_l.item())
-        t_losses_u.update(t_loss_u.item())
+        # t_losses_u.update(t_loss_u.item())
+        t_losses_u.update(t_loss_u.mean().item())  # wycho
         t_losses_mpl.update(t_loss_mpl.item())
-        mean_mask.update(mask.mean().item())
+        # mean_mask.update(mask.mean().item())
 
         batch_time.update(time.time() - end)
         pbar.set_description(
             f"Train Iter: {step+1:3}/{args.total_steps:3}. "
             f"LR: {get_lr(s_optimizer):.4f}. Data: {data_time.avg:.2f}s. "
             f"Batch: {batch_time.avg:.2f}s. S_Loss: {s_losses.avg:.4f}. "
-            f"T_Loss: {t_losses.avg:.4f}. Mask: {mean_mask.avg:.4f}. ")
+            f"T_Loss: {t_losses.avg:.4f}.  ")
         pbar.update()
         if args.local_rank in [-1, 0]:
             args.writer.add_scalar("lr", get_lr(s_optimizer), step)
@@ -344,8 +345,8 @@ def train_loop(args, labeled_loader, unlabeled_loader, test_loader, finetune_dat
                     "train/4.t_unlabeled", t_losses_u.avg, args.num_eval)
                 args.writer.add_scalar(
                     "train/5.t_mpl", t_losses_mpl.avg, args.num_eval)
-                args.writer.add_scalar(
-                    "train/6.mask", mean_mask.avg, args.num_eval)
+                # args.writer.add_scalar(
+                #     "train/6.mask", mean_mask.avg, args.num_eval)
 #                 wandb.log({"train/1.s_loss": s_losses.avg,
 #                            "train/2.t_loss": t_losses.avg,
 #                            "train/3.t_labeled": t_losses_l.avg,
