@@ -61,7 +61,8 @@ def get_cifar10(args):
     ])
     base_dataset = datasets.CIFAR10(args.data_path, train=True, download=True)
 
-    train_labeled_idxs, train_unlabeled_idxs, finetune_idxs = x_u_split(args, base_dataset.targets)
+    train_labeled_idxs, train_unlabeled_idxs, finetune_idxs = x_u_split(
+        args, base_dataset.targets)
 
     train_labeled_dataset = CIFAR10SSL(
         args.data_path, train_labeled_idxs, train=True,
@@ -112,7 +113,8 @@ def get_cifar100(args):
 
     base_dataset = datasets.CIFAR100(args.data_path, train=True, download=True)
 
-    train_labeled_idxs, train_unlabeled_idxs, finetune_idxs = x_u_split(args, base_dataset.targets)
+    train_labeled_idxs, train_unlabeled_idxs, finetune_idxs = x_u_split(
+        args, base_dataset.targets)
 
     train_labeled_dataset = CIFAR100SSL(
         args.data_path, train_labeled_idxs, train=True,
@@ -191,16 +193,17 @@ class TransformMPL(object):
 
         self.ori = transforms.Compose([
             transforms.RandomHorizontalFlip(),
-            transforms.RandomCrop(size=args.resize,
-                                  padding=int(args.resize * 0.125),
-                                  fill=128,
-                                  padding_mode='constant')])
+            # transforms.RandomCrop(size=args.resize,
+            #                       padding=int(args.resize * 0.125),
+            #                       fill=128,
+            #                       padding_mode='constant')
+        ])
         self.aug = transforms.Compose([
             transforms.RandomHorizontalFlip(),
-            transforms.RandomCrop(size=args.resize,
-                                  padding=int(args.resize * 0.125),
-                                  fill=128,
-                                  padding_mode='constant'),
+            # transforms.RandomCrop(size=args.resize,
+            #                       padding=int(args.resize * 0.125),
+            #                       fill=128,
+            #                       padding_mode='constant'),
             RandAugmentCIFAR(n=n, m=m)])
         self.normalize = transforms.Compose([
             transforms.ToTensor(),
@@ -235,7 +238,6 @@ class CIFAR10SSL(datasets.CIFAR10):
             target = self.target_transform(target)
 
         return img, target
-        
 
 
 class CIFAR100SSL(datasets.CIFAR100):
@@ -261,11 +263,12 @@ class CIFAR100SSL(datasets.CIFAR100):
             target = self.target_transform(target)
 
         return img, target
-    
+
 
 def load_data(img_path, args, train=True):
 
-    gt_path = img_path.replace('.jpg', '.h5').replace('images', 'gt_density_map')
+    gt_path = img_path.replace('.jpg', '.h5').replace(
+        'images', 'gt_density_map')
     img = Image.open(img_path).convert('RGB')
 
     while True:
@@ -281,6 +284,7 @@ def load_data(img_path, args, train=True):
     gt_count = gt_count.copy()
 
     return img, gt_count
+
 
 def pre_data(train_list, args, train):
     print("Pre_load dataset ......")
@@ -306,7 +310,7 @@ def pre_data(train_list, args, train):
 
 def get_crowd(args):
 
-    #일단 finetune도 train dataset을 이용하도록 하자. wycho
+    # 일단 finetune도 train dataset을 이용하도록 하자. wycho
 
     train_l_list = None
     train_ul_list = None
@@ -325,7 +329,6 @@ def get_crowd(args):
     train_ul_data = pre_data(train_ul_list, args, train=True)
     test_data = pre_data(test_l_list, args, train=False)
 
-
     if args.randaug:
         n, m = args.randaug
     else:
@@ -333,18 +336,18 @@ def get_crowd(args):
 
     transform_labeled = transforms.Compose([
         transforms.RandomHorizontalFlip(),
-        transforms.RandomCrop(size=args.resize,
-                              padding=int(args.resize * 0.125),
-                              fill=128,
-                              padding_mode='constant'),
+        # transforms.RandomCrop(size=args.resize,
+        #                       padding=int(args.resize * 0.125),
+        #                       fill=128,
+        #                       padding_mode='constant'),
         transforms.ToTensor(),
         transforms.Normalize(mean=cifar100_mean, std=cifar100_std)])
     transform_finetune = transforms.Compose([
         transforms.RandomHorizontalFlip(),
-        transforms.RandomCrop(size=args.resize,
-                              padding=int(args.resize * 0.125),
-                              fill=128,
-                              padding_mode='constant'),
+        # transforms.RandomCrop(size=args.resize,
+        #                       padding=int(args.resize * 0.125),
+        #                       fill=128,
+        #                       padding_mode='constant'),
         RandAugmentCIFAR(n=n, m=m),
         transforms.ToTensor(),
         transforms.Normalize(mean=cifar100_mean, std=cifar100_std)])
@@ -352,21 +355,18 @@ def get_crowd(args):
     transform_val = transforms.Compose([
         transforms.ToTensor(),
         transforms.Normalize(mean=cifar100_mean, std=cifar100_std)])
-    
 
-    train_labeled_dataset = listDataset(train_l_data, transform_labeled, train=True, args=args)
-    finetune_dataset = listDataset(train_l_data, transform_finetune, train=True, args=args)
-    train_unlabeled_dataset = listDataset(train_ul_data, TransformMPL(args, mean=cifar100_mean, std=cifar100_std), train=True, args=args)
+    train_labeled_dataset = listDataset(
+        train_l_data, transform_labeled, train=True, args=args)
+    finetune_dataset = listDataset(
+        train_l_data, transform_finetune, train=True, args=args)
+    train_unlabeled_dataset = listDataset(train_ul_data, TransformMPL(
+        args, mean=cifar100_mean, std=cifar100_std), train=True, args=args)
     test_dataset = listDataset(test_data, transform_val, train=True, args=args)
 
-  
-   
-
     return train_labeled_dataset, train_unlabeled_dataset, test_dataset, finetune_dataset
-   
-
 
 
 DATASET_GETTERS = {'cifar10': get_cifar10,
                    'cifar100': get_cifar100,
-                   'crowd':get_crowd}
+                   'crowd': get_crowd}

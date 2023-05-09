@@ -227,15 +227,20 @@ def train_loop(args, labeled_loader, unlabeled_loader, test_loader, finetune_dat
             del t_logits
 
             t_loss_l = criterion(t_logits_l, targets)
+            soft_pseudo_label = t_logits_uw.detach()
 
-            soft_pseudo_label = torch.softmax(
-                t_logits_uw.detach() / args.temperature, dim=-1)
-            max_probs, hard_pseudo_label = torch.max(soft_pseudo_label, dim=-1)
-            mask = max_probs.ge(args.threshold).float()
-            t_loss_u = torch.mean(
-                -(soft_pseudo_label *
-                  torch.log_softmax(t_logits_us, dim=-1)).sum(dim=-1) * mask
-            )
+            # # soft_pseudo_label = torch.softmax(
+            # #     t_logits_uw.detach() / args.temperature, dim=-1)
+            # max_probs, hard_pseudo_label = torch.max(soft_pseudo_label, dim=-1)
+            # mask = max_probs.ge(args.threshold).float()
+            # t_loss_u = torch.mean(
+            #     -(soft_pseudo_label *
+            #       torch.log_softmax(t_logits_us, dim=-1)).sum(dim=-1) * mask
+            # )
+
+            t_loss_u = soft_pseudo_label  # wycho -> 이 부분 해결해야함.
+            hard_pseudo_label = soft_pseudo_label
+
             weight_u = args.lambda_u * min(1., (step + 1) / args.uda_steps)
             t_loss_uda = t_loss_l + weight_u * t_loss_u
 
@@ -274,7 +279,9 @@ def train_loop(args, labeled_loader, unlabeled_loader, test_loader, finetune_dat
             # moving_dot_product = moving_dot_product * 0.99 + dot_product * 0.01
             # dot_product = dot_product - moving_dot_product
 
-            _, hard_pseudo_label = torch.max(t_logits_us.detach(), dim=-1)
+            # _, hard_pseudo_label = torch.max(t_logits_us.detach(), dim=-1)
+            hard_pseudo_label = t_logits_us.detach()
+
             # t_loss_mpl = dot_product * \
             #     F.cross_entropy(t_logits_us, hard_pseudo_label)
 
@@ -347,30 +354,30 @@ def train_loop(args, labeled_loader, unlabeled_loader, test_loader, finetune_dat
 #                            "train/6.mask": mean_mask.avg})
 
                 test_model = avg_student_model if avg_student_model is not None else student_model
-                test_loss, pred = evaluate(
+                test_loss = evaluate(
                     args, test_loader, test_model, criterion)
 
                 args.writer.add_scalar("test/loss", test_loss, args.num_eval)
                 args.writer.add_scalar(
-                    "test/mae", pred, args.num_eval)
+                    "test/loss", test_loss, args.num_eval)
 
 #                 wandb.log({"test/loss": test_loss,
 #                            "test/acc@1": top1,
 #                            "test/acc@5": top5})
 
-                is_best = pred < args.best_pred
+                is_best = test_loss < args.best_loss
                 if is_best:
-                    args.best_pred = pred
+                    args.best_loss = test_loss
 
-                logger.info(f"mae: {pred:.2f}")
-                logger.info(f"best_mae: {args.best_pred:.2f}")
+                logger.info(f"loss: {test_loss:.2f}")
+                logger.info(f"best_loss: {args.best_loss:.2f}")
 
                 save_checkpoint(args, {
                     'step': step + 1,
                     'teacher_state_dict': teacher_model.state_dict(),
                     'student_state_dict': student_model.state_dict(),
                     'avg_state_dict': avg_student_model.state_dict() if avg_student_model is not None else None,
-                    'best_mae': args.best_pred,
+                    'best_loss': args.best_loss,
                     'teacher_optimizer': t_optimizer.state_dict(),
                     'student_optimizer': s_optimizer.state_dict(),
                     'teacher_scheduler': t_scheduler.state_dict(),
@@ -380,7 +387,7 @@ def train_loop(args, labeled_loader, unlabeled_loader, test_loader, finetune_dat
                 }, is_best)
 
     if args.local_rank in [-1, 0]:
-        args.writer.add_scalar("result/test_mae", args.best_pred)
+        args.writer.add_scalar("result/test_loss", args.best_loss)
 #         wandb.log({"result/test_acc@1": args.best_top1})
 
     # finetune
@@ -402,7 +409,6 @@ def evaluate(args, test_loader, model, criterion):
     batch_time = AverageMeter()
     data_time = AverageMeter()
     losses = AverageMeter()
-    pred = AverageMeter()
 
     model.eval()
     test_iter = tqdm(test_loader, disable=args.local_rank not in [-1, 0])
@@ -417,19 +423,18 @@ def evaluate(args, test_loader, model, criterion):
                 outputs = model(images)
                 loss = criterion(outputs, targets)
 
-            acc1, acc5 = accuracy(outputs, targets, (1, 5))  # wycho
+            # acc1, acc5 = accuracy(outputs, targets, (1, 5))  # wycho
             losses.update(loss.item(), batch_size)
-            pred.update(pred[0], batch_size)
+            # pred.update(pred[0], batch_size)
 
             batch_time.update(time.time() - end)
             end = time.time()
             test_iter.set_description(
                 f"Test Iter: {step+1:3}/{len(test_loader):3}. Data: {data_time.avg:.2f}s. "
-                f"Batch: {batch_time.avg:.2f}s. Loss: {losses.avg:.4f}. "
-                f"mae: {pred.avg:.2f}. ")
+                f"Batch: {batch_time.avg:.2f}s. Loss: {losses.avg:.4f}. ")
 
         test_iter.close()
-        return losses.avg, pred.avg
+        return losses.avg
 
 
 def finetune(args, finetune_dataset, test_loader, model, criterion):
@@ -486,39 +491,39 @@ def finetune(args, finetune_dataset, test_loader, model, criterion):
         labeled_iter.close()
         if args.local_rank in [-1, 0]:
             args.writer.add_scalar("finetune/train_loss", losses.avg, epoch)
-            test_loss, pred = evaluate(
+            test_loss = evaluate(
                 args, test_loader, model, criterion)
             args.writer.add_scalar("finetune/test_loss", test_loss, epoch)
-            args.writer.add_scalar("finetune/mae", pred, epoch)
+
 
 #             wandb.log({"finetune/train_loss": losses.avg,
 #                        "finetune/test_loss": test_loss,
 #                        "finetune/acc@1": top1,
 #                        "finetune/acc@5": top5})
 
-            is_best = pred < args.best_pred
+            is_best = test_loss < args.best_loss
             if is_best:
-                args.best_pred = pred
+                args.best_loss = test_loss
 
-            logger.info(f"mae: {pred:.2f}")
-            logger.info(f"Best mae: {args.best_pred:.2f}")
+            logger.info(f"loss: {test_loss:.2f}")
+            logger.info(f"best_loss: {args.best_loss:.2f}")
 
             save_checkpoint(args, {
                 'step': step + 1,
-                'best_pred': args.best_pred,
+                'best_loss': args.best_loss,
                 'student_state_dict': model.state_dict(),
                 'avg_state_dict': None,
                 'student_optimizer': optimizer.state_dict(),
             }, is_best, finetune=True)
         if args.local_rank in [-1, 0]:
-            args.writer.add_scalar("result/finetune_acc@1", args.best_pred)
+            args.writer.add_scalar("result/finetune_loss", args.best_loss)
 #             wandb.log({"result/finetune_acc@1": args.best_top1})
     return
 
 
 def main():
     args = parser.parse_args()
-    args.best_pred = 0.
+    args.best_loss = 0.
 
     if args.local_rank != -1:
         args.gpu = args.local_rank
@@ -661,7 +666,7 @@ def main():
             logger.info(f"=> loading checkpoint '{args.resume}'")
             loc = f'cuda:{args.gpu}'
             checkpoint = torch.load(args.resume, map_location=loc)
-            args.best_pred = checkpoint['best_pred'].to(torch.device('cpu'))
+            args.best_loss = checkpoint['best_loss'].to(torch.device('cpu'))
 
             if not (args.evaluate or args.finetune):
                 args.start_step = checkpoint['step']
