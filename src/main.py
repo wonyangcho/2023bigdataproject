@@ -24,6 +24,8 @@ from models.trans_crowd import base_patch16_384_token, base_patch16_384_gap
 from utils import (AverageMeter, accuracy, create_loss_fn,
                    save_checkpoint, reduce_tensor, model_load_state_dict)
 
+from logger import web_logger
+
 logger = logging.getLogger(__name__)
 
 parser = argparse.ArgumentParser()
@@ -115,6 +117,13 @@ parser.add_argument('--train_ul_data', default="", type=str,
                     help='unlabeld data file full path')
 parser.add_argument('--test_l_data', default="", type=str,
                     help='test data file full path')
+
+# wandb
+parser.add_argument("--use_wandb",  action="store_true", help="use wandb")
+parser.add_argument(
+    "--project_name",  default='2023BigDataProject', type=str, help='project name')
+parser.add_argument("--description",  default='initial test',
+                    type=str, help='experiment description')
 
 
 def set_seed(args):
@@ -218,6 +227,7 @@ def train_loop(args, labeled_loader, unlabeled_loader, test_loader, finetune_dat
         images_uw = images_uw.to(args.device)
         images_us = images_us.to(args.device)
         targets = targets.to(args.device)
+
         with amp.autocast(enabled=args.amp):
             batch_size = images_l.shape[0]
             t_images = torch.cat((images_l, images_uw, images_us))
@@ -329,6 +339,7 @@ def train_loop(args, labeled_loader, unlabeled_loader, test_loader, finetune_dat
         pbar.update()
         if args.local_rank in [-1, 0]:
             args.writer.add_scalar("lr", get_lr(s_optimizer), step)
+            web_logger.log(args, {"lr": get_lr(s_optimizer)})
 #             wandb.log({"lr": get_lr(s_optimizer)})
 
         args.num_eval = step // args.eval_step
@@ -345,14 +356,19 @@ def train_loop(args, labeled_loader, unlabeled_loader, test_loader, finetune_dat
                     "train/4.t_unlabeled", t_losses_u.avg, args.num_eval)
                 args.writer.add_scalar(
                     "train/5.t_mpl", t_losses_mpl.avg, args.num_eval)
-                # args.writer.add_scalar(
-                #     "train/6.mask", mean_mask.avg, args.num_eval)
-#                 wandb.log({"train/1.s_loss": s_losses.avg,
-#                            "train/2.t_loss": t_losses.avg,
-#                            "train/3.t_labeled": t_losses_l.avg,
-#                            "train/4.t_unlabeled": t_losses_u.avg,
-#                            "train/5.t_mpl": t_losses_mpl.avg,
-#                            "train/6.mask": mean_mask.avg})
+
+
+                web_logger.log(args,
+                    {"train/1.s_loss", s_losses.avg, args.num_eval})
+                web_logger.log(args,
+                    {"train/2.t_loss", t_losses.avg, args.num_eval})
+                web_logger.log(args,
+                    {"train/3.t_labeled", t_losses_l.avg, args.num_eval})
+                web_logger.log(args,
+                    {"train/4.t_unlabeled", t_losses_u.avg, args.num_eval})
+                web_logger.log(args,
+                    {"train/5.t_mpl", t_losses_mpl.avg, args.num_eval})
+                
 
                 test_model = avg_student_model if avg_student_model is not None else student_model
                 test_loss = evaluate(
@@ -362,9 +378,10 @@ def train_loop(args, labeled_loader, unlabeled_loader, test_loader, finetune_dat
                 args.writer.add_scalar(
                     "test/loss", test_loss, args.num_eval)
 
-#                 wandb.log({"test/loss": test_loss,
-#                            "test/acc@1": top1,
-#                            "test/acc@5": top5})
+                web_logger.log(args,{"test/loss", test_loss, args.num_eval})
+                web_logger.log(args,
+                    {"test/loss", test_loss, args.num_eval})
+
 
                 is_best = test_loss < args.best_loss
                 if is_best:
@@ -389,6 +406,7 @@ def train_loop(args, labeled_loader, unlabeled_loader, test_loader, finetune_dat
 
     if args.local_rank in [-1, 0]:
         args.writer.add_scalar("result/test_loss", args.best_loss)
+        web_logger.log(args,{"result/test_loss", args.best_loss})
 #         wandb.log({"result/test_acc@1": args.best_top1})
 
     # finetune
@@ -496,11 +514,10 @@ def finetune(args, finetune_dataset, test_loader, model, criterion):
                 args, test_loader, model, criterion)
             args.writer.add_scalar("finetune/test_loss", test_loss, epoch)
 
+            web_logger.log(args,{"finetune/train_loss", losses.avg, epoch})
+            web_logger.log(args,{"finetune/test_loss", test_loss, epoch})
 
-#             wandb.log({"finetune/train_loss": losses.avg,
-#                        "finetune/test_loss": test_loss,
-#                        "finetune/acc@1": top1,
-#                        "finetune/acc@5": top5})
+
 
             is_best = test_loss < args.best_loss
             if is_best:
@@ -518,6 +535,7 @@ def finetune(args, finetune_dataset, test_loader, model, criterion):
             }, is_best, finetune=True)
         if args.local_rank in [-1, 0]:
             args.writer.add_scalar("result/finetune_loss", args.best_loss)
+            web_logger.log(args,{"result/finetune_loss", args.best_loss})
 #             wandb.log({"result/finetune_acc@1": args.best_top1})
     return
 
@@ -526,6 +544,8 @@ def main():
     args = parser.parse_args()
     args.best_loss = 0.
 
+   
+
     if args.local_rank != -1:
         args.gpu = args.local_rank
         torch.distributed.init_process_group(backend='nccl')
@@ -533,6 +553,9 @@ def main():
     else:
         args.gpu = 0
         args.world_size = 1
+
+     if args.local_rank in [-1, 0]:
+        args.local_time = f"{time.localtime().tm_mon:02d}{time.localtime().tm_mday:02d}{time.localtime().tm_hour:02d}{time.localtime().tm_min:02d}{time.localtime().tm_sec:02d}"
 
     args.device = torch.device('cuda', args.gpu)
 
