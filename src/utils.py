@@ -26,8 +26,8 @@ def create_loss_fn(args):
     # criterion = nn.CrossEntropyLoss(label_smoothing=args.label_smoothing)
     # return criterion.to(args.device)
 
-    # criterion = nn.L1Loss(size_average=False)
-    criterion = nn.MSELoss()
+    criterion = nn.L1Loss(size_average=False)
+    # criterion = nn.MSELoss()
     return criterion.to(args.device)
 
 

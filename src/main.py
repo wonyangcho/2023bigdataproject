@@ -237,7 +237,20 @@ def train_loop(args, labeled_loader, unlabeled_loader, test_loader, finetune_dat
             del t_logits
 
             t_loss_l = criterion(t_logits_l, targets)
+            soft_pseudo_label = t_logits_uw.detach()
+
+            # # soft_pseudo_label = torch.softmax(
+            # #     t_logits_uw.detach() / args.temperature, dim=-1)
+            # max_probs, hard_pseudo_label = torch.max(soft_pseudo_label, dim=-1)
+            # mask = max_probs.ge(args.threshold).float()
+            # t_loss_u = torch.mean(
+            #     -(soft_pseudo_label *
+            #       torch.log_softmax(t_logits_us, dim=-1)).sum(dim=-1) * mask
+            # )
+
+            # wycho -> 이 부분 해결해야함.
             t_loss_u = criterion(t_logits_uw, t_logits_us)
+            hard_pseudo_label = soft_pseudo_label
 
             weight_u = args.lambda_u * min(1., (step + 1) / args.uda_steps)
             t_loss_uda = t_loss_l + weight_u * t_loss_u
