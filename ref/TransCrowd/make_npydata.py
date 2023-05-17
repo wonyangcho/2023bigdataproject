@@ -7,8 +7,8 @@ if not os.path.exists('./npydata'):
 
 '''please set your dataset path'''
 try:
-    shanghaiAtrain_path = '/home/ss3060/work/2023bigdataproject/data/ShanghaiTech/part_A_final/train_data/images_crop/'
-    shanghaiAtest_path = '/home/ss3060/work/2023bigdataproject/data/ShanghaiTech/part_A_final/test_data/images_crop/'
+    shanghaiAtrain_path = '/work/wycho/2023bigdataproject/data/ShanghaiTech/part_A_final/train_data/images_crop/'
+    shanghaiAtest_path = '/work/wycho/2023bigdataproject/data/ShanghaiTech/part_A_final/test_data/images_crop/'
 
     train_list = []
     for filename in os.listdir(shanghaiAtrain_path):
@@ -25,14 +25,15 @@ try:
     test_list.sort()
     np.save('./npydata/ShanghaiA_test.npy', test_list)
 
-    print("generate ShanghaiA image list successfully", len(train_list), len(test_list))
+    print("generate ShanghaiA image list successfully",
+          len(train_list), len(test_list))
 except:
     print("The ShanghaiA dataset path is wrong. Please check you path.")
 
 
 try:
-    shanghaiBtrain_path = '/home/ss3060/work/2023bigdataproject/data/ShanghaiTech/part_B_final/train_data/images_crop/'
-    shanghaiBtest_path = '/home/ss3060/work/2023bigdataproject/data/ShanghaiTech/part_B_final/test_data/images_crop/'
+    shanghaiBtrain_path = '/work/wycho/2023bigdataproject/data/ShanghaiTech/part_B_final/train_data/images_crop/'
+    shanghaiBtest_path = '/work/wycho/2023bigdataproject/data/ShanghaiTech/part_B_final/test_data/images_crop/'
 
     train_list = []
     for filename in os.listdir(shanghaiBtrain_path):
@@ -47,6 +48,7 @@ try:
             test_list.append(shanghaiBtest_path + filename)
     test_list.sort()
     np.save('./npydata/ShanghaiB_test.npy', test_list)
-    print("Generate ShanghaiB image list successfully", len(train_list), len(test_list))
+    print("Generate ShanghaiB image list successfully",
+          len(train_list), len(test_list))
 except:
     print("The ShanghaiB dataset path is wrong. Please check your path.")
