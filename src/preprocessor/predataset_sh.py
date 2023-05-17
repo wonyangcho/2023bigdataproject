@@ -11,7 +11,7 @@ from scipy.ndimage.filters import gaussian_filter
 import random
 
 '''set your data path'''
-root = '/home/ss3060/work/2023bigdataproject/data/ShanghaiTech/'
+root = '/work/wycho/2023bigdataproject/data/ShanghaiTech/'
 
 part_A_train = os.path.join(root, 'part_A_final/train_data', 'images')
 part_A_test = os.path.join(root, 'part_A_final/test_data', 'images')
@@ -48,7 +48,6 @@ if not os.path.exists(part_B_test.replace('images', 'images_crop')):
     os.makedirs(part_B_test.replace('images', 'images_crop'))
 
 
-
 img_paths = []
 for path in path_sets:
     for img_path in glob.glob(os.path.join(path, '*.jpg')):
@@ -70,7 +69,8 @@ for img_path in img_paths:
 # 네 번째 열: 객체의 높이
 # 다섯 번째 열: 객체의 클래스 인덱스
 
-    mat = io.loadmat(img_path.replace('.jpg', '.mat').replace('images', 'ground_truth').replace('IMG_', 'GT_IMG_'))
+    mat = io.loadmat(img_path.replace('.jpg', '.mat').replace(
+        'images', 'ground_truth').replace('IMG_', 'GT_IMG_'))
     Gt_data = mat["image_info"][0][0][0][0][0]
 
     rate = 1
@@ -110,14 +110,17 @@ for img_path in img_paths:
 
         for i in range(0, m):
             for j in range(0, n):
-                crop_img = Img_data[j * 384: 384 * (j + 1), i * 384:(i + 1) * 384, ]
-                crop_kpoint = kpoint[j * 384: 384 * (j + 1), i * 384:(i + 1) * 384]
+                crop_img = Img_data[j * 384: 384 *
+                                    (j + 1), i * 384:(i + 1) * 384, ]
+                crop_kpoint = kpoint[j * 384: 384 *
+                                     (j + 1), i * 384:(i + 1) * 384]
                 gt_count = np.sum(crop_kpoint)
 
                 save_fname = str(i) + str(j) + str('_') + fname
                 save_path = root_path + save_fname
 
-                h5_path = save_path.replace('.jpg', '.h5').replace('images', 'gt_density_map')
+                h5_path = save_path.replace('.jpg', '.h5').replace(
+                    'images', 'gt_density_map')
                 if gt_count == 0:
                     print(save_path, h5_path)
                 with h5py.File(h5_path, 'w') as hf:

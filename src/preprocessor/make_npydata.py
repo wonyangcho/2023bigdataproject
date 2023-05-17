@@ -1,8 +1,8 @@
 import os
 import numpy as np
 
-if not os.path.exists('../npydata'):
-    os.makedirs('../npydata')
+if not os.path.exists('./npydata'):
+    os.makedirs('./npydata')
 
 
 '''please set your dataset path'''

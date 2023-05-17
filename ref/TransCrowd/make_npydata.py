@@ -32,7 +32,7 @@ except:
 
 
 try:
-    shanghaiBtrain_path = '/work/wycho/2023bigdataproject/data/ShanghaiTech/part_B_final/train_data/images_crop/'
+    shanghaiBtrain_path = '/work/wycho//2023bigdataproject/data/ShanghaiTech/part_B_final/train_data/images_crop/'
     shanghaiBtest_path = '/work/wycho/2023bigdataproject/data/ShanghaiTech/part_B_final/test_data/images_crop/'
 
     train_list = []
