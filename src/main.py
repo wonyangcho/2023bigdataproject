@@ -237,19 +237,7 @@ def train_loop(args, labeled_loader, unlabeled_loader, test_loader, finetune_dat
             del t_logits
 
             t_loss_l = criterion(t_logits_l, targets)
-            soft_pseudo_label = t_logits_uw.detach()
-
-            # # soft_pseudo_label = torch.softmax(
-            # #     t_logits_uw.detach() / args.temperature, dim=-1)
-            # max_probs, hard_pseudo_label = torch.max(soft_pseudo_label, dim=-1)
-            # mask = max_probs.ge(args.threshold).float()
-            # t_loss_u = torch.mean(
-            #     -(soft_pseudo_label *
-            #       torch.log_softmax(t_logits_us, dim=-1)).sum(dim=-1) * mask
-            # )
-
-            t_loss_u = soft_pseudo_label  # wycho -> 이 부분 해결해야함.
-            hard_pseudo_label = soft_pseudo_label
+            t_loss_u = criterion(t_logits_uw, t_logits_us)
 
             weight_u = args.lambda_u * min(1., (step + 1) / args.uda_steps)
             t_loss_uda = t_loss_l + weight_u * t_loss_u
@@ -357,18 +345,16 @@ def train_loop(args, labeled_loader, unlabeled_loader, test_loader, finetune_dat
                 args.writer.add_scalar(
                     "train/5.t_mpl", t_losses_mpl.avg, args.num_eval)
 
-
                 web_logger.log(args,
-                    {"train/1.s_loss", s_losses.avg, args.num_eval})
+                               {"train/1.s_loss", s_losses.avg, args.num_eval})
                 web_logger.log(args,
-                    {"train/2.t_loss", t_losses.avg, args.num_eval})
+                               {"train/2.t_loss", t_losses.avg, args.num_eval})
                 web_logger.log(args,
-                    {"train/3.t_labeled", t_losses_l.avg, args.num_eval})
+                               {"train/3.t_labeled", t_losses_l.avg, args.num_eval})
                 web_logger.log(args,
-                    {"train/4.t_unlabeled", t_losses_u.avg, args.num_eval})
+                               {"train/4.t_unlabeled", t_losses_u.avg, args.num_eval})
                 web_logger.log(args,
-                    {"train/5.t_mpl", t_losses_mpl.avg, args.num_eval})
-                
+                               {"train/5.t_mpl", t_losses_mpl.avg, args.num_eval})
 
                 test_model = avg_student_model if avg_student_model is not None else student_model
                 test_loss = evaluate(
@@ -378,10 +364,9 @@ def train_loop(args, labeled_loader, unlabeled_loader, test_loader, finetune_dat
                 args.writer.add_scalar(
                     "test/loss", test_loss, args.num_eval)
 
-                web_logger.log(args,{"test/loss", test_loss, args.num_eval})
+                web_logger.log(args, {"test/loss", test_loss, args.num_eval})
                 web_logger.log(args,
-                    {"test/loss", test_loss, args.num_eval})
-
+                               {"test/loss", test_loss, args.num_eval})
 
                 is_best = test_loss < args.best_loss
                 if is_best:
@@ -406,7 +391,7 @@ def train_loop(args, labeled_loader, unlabeled_loader, test_loader, finetune_dat
 
     if args.local_rank in [-1, 0]:
         args.writer.add_scalar("result/test_loss", args.best_loss)
-        web_logger.log(args,{"result/test_loss", args.best_loss})
+        web_logger.log(args, {"result/test_loss", args.best_loss})
 #         wandb.log({"result/test_acc@1": args.best_top1})
 
     # finetune
@@ -514,10 +499,8 @@ def finetune(args, finetune_dataset, test_loader, model, criterion):
                 args, test_loader, model, criterion)
             args.writer.add_scalar("finetune/test_loss", test_loss, epoch)
 
-            web_logger.log(args,{"finetune/train_loss", losses.avg, epoch})
-            web_logger.log(args,{"finetune/test_loss", test_loss, epoch})
-
-
+            web_logger.log(args, {"finetune/train_loss", losses.avg, epoch})
+            web_logger.log(args, {"finetune/test_loss", test_loss, epoch})
 
             is_best = test_loss < args.best_loss
             if is_best:
@@ -535,7 +518,7 @@ def finetune(args, finetune_dataset, test_loader, model, criterion):
             }, is_best, finetune=True)
         if args.local_rank in [-1, 0]:
             args.writer.add_scalar("result/finetune_loss", args.best_loss)
-            web_logger.log(args,{"result/finetune_loss", args.best_loss})
+            web_logger.log(args, {"result/finetune_loss", args.best_loss})
 #             wandb.log({"result/finetune_acc@1": args.best_top1})
     return
 
@@ -543,8 +526,6 @@ def finetune(args, finetune_dataset, test_loader, model, criterion):
 def main():
     args = parser.parse_args()
     args.best_loss = 0.
-
-   
 
     if args.local_rank != -1:
         args.gpu = args.local_rank
@@ -554,7 +535,7 @@ def main():
         args.gpu = 0
         args.world_size = 1
 
-     if args.local_rank in [-1, 0]:
+    if args.local_rank in [-1, 0]:
         args.local_time = f"{time.localtime().tm_mon:02d}{time.localtime().tm_mday:02d}{time.localtime().tm_hour:02d}{time.localtime().tm_min:02d}{time.localtime().tm_sec:02d}"
 
     args.device = torch.device('cuda', args.gpu)
