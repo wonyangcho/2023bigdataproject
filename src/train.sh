@@ -31,5 +31,5 @@ python main.py \
     --home "/work/wycho/2023bigdataproject/src/" \
     --train_l_data "npydata/qnrf_train.npy" \
     --train_ul_data "npydata/ShanghaiA_train.npy" \
-    --test_l_data "/npydata/qnrf_test.npy" 
+    --test_l_data "/npydata/qnrf_test.npy" \
     --use_wandb 
