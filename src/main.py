@@ -359,15 +359,15 @@ def train_loop(args, labeled_loader, unlabeled_loader, test_loader, finetune_dat
                     "train/5.t_mpl", t_losses_mpl.avg, args.num_eval)
 
                 web_logger.log(args,
-                               {"train/1.s_loss", s_losses.avg, args.num_eval})
+                               {"train/1.s_loss": s_losses.avg})
                 web_logger.log(args,
-                               {"train/2.t_loss", t_losses.avg, args.num_eval})
+                               {"train/2.t_loss": t_losses.avg})
                 web_logger.log(args,
-                               {"train/3.t_labeled", t_losses_l.avg, args.num_eval})
+                               {"train/3.t_labeled": t_losses_l.avg})
                 web_logger.log(args,
-                               {"train/4.t_unlabeled", t_losses_u.avg, args.num_eval})
+                               {"train/4.t_unlabeled": t_losses_u.avg})
                 web_logger.log(args,
-                               {"train/5.t_mpl", t_losses_mpl.avg, args.num_eval})
+                               {"train/5.t_mpl": t_losses_mpl.avg})
 
                 test_model = avg_student_model if avg_student_model is not None else student_model
                 test_loss = evaluate(
@@ -377,9 +377,9 @@ def train_loop(args, labeled_loader, unlabeled_loader, test_loader, finetune_dat
                 args.writer.add_scalar(
                     "test/loss", test_loss, args.num_eval)
 
-                web_logger.log(args, {"test/loss", test_loss, args.num_eval})
+                web_logger.log(args, {"test/loss": test_loss})
                 web_logger.log(args,
-                               {"test/loss", test_loss, args.num_eval})
+                               {"test/loss": test_loss})
 
                 is_best = test_loss < args.best_loss
                 if is_best:
@@ -404,7 +404,7 @@ def train_loop(args, labeled_loader, unlabeled_loader, test_loader, finetune_dat
 
     if args.local_rank in [-1, 0]:
         args.writer.add_scalar("result/test_loss", args.best_loss)
-        web_logger.log(args, {"result/test_loss", args.best_loss})
+        web_logger.log(args, {"result/test_loss": args.best_loss})
 #         wandb.log({"result/test_acc@1": args.best_top1})
 
     # finetune
@@ -432,6 +432,12 @@ def evaluate(args, test_loader, model, criterion):
     with torch.no_grad():
         end = time.time()
         for step, (images, targets) in enumerate(test_iter):
+
+            if len(images.shape) == 5:
+                images = images.squeeze(0)
+            if len(images.shape) == 3:
+                images = images.unsqueeze(0)
+
             data_time.update(time.time() - end)
             batch_size = images.shape[0]
             images = images.to(args.device)
@@ -512,8 +518,8 @@ def finetune(args, finetune_dataset, test_loader, model, criterion):
                 args, test_loader, model, criterion)
             args.writer.add_scalar("finetune/test_loss", test_loss, epoch)
 
-            web_logger.log(args, {"finetune/train_loss", losses.avg, epoch})
-            web_logger.log(args, {"finetune/test_loss", test_loss, epoch})
+            web_logger.log(args, {"finetune/train_loss": losses.avg})
+            web_logger.log(args, {"finetune/test_loss": test_loss})
 
             is_best = test_loss < args.best_loss
             if is_best:
@@ -531,7 +537,7 @@ def finetune(args, finetune_dataset, test_loader, model, criterion):
             }, is_best, finetune=True)
         if args.local_rank in [-1, 0]:
             args.writer.add_scalar("result/finetune_loss", args.best_loss)
-            web_logger.log(args, {"result/finetune_loss", args.best_loss})
+            web_logger.log(args, {"result/finetune_loss": args.best_loss})
 #             wandb.log({"result/finetune_acc@1": args.best_top1})
     return
 

@@ -362,9 +362,11 @@ def get_crowd(args):
         train_l_data, transform_finetune, train=True, args=args)
     train_unlabeled_dataset = listDataset(train_ul_data, TransformMPL(
         args, mean=cifar100_mean, std=cifar100_std), train=True, args=args)
-    test_dataset = listDataset(test_data, transform_val, train=True, args=args)
+    test_dataset = listDataset(
+        test_data, transform_val, train=False, args=args)
 
     return train_labeled_dataset, train_unlabeled_dataset, test_dataset, finetune_dataset
+    # return train_labeled_dataset, train_unlabeled_dataset, train_labeled_dataset, finetune_dataset
 
 
 DATASET_GETTERS = {'cifar10': get_cifar10,

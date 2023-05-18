@@ -34,7 +34,36 @@ class listDataset(Dataset):
         gt_count = gt_count.copy()
         img = img.copy()
 
-        if self.transform is not None:
-            img = self.transform(img)
+        if self.train == True:
 
-        return img, gt_count
+            if self.transform is not None:
+                img = self.transform(img)
+
+            return img, gt_count
+        else:
+
+            if self.transform is not None:
+                img = self.transform(img)
+
+            device = img.device
+
+            width, height = img.shape[2], img.shape[1]
+
+            m = int(width / 384)
+            n = int(height / 384)
+            for i in range(0, m):
+                for j in range(0, n):
+
+                    if i == 0 and j == 0:
+                        img_return = img[:, j * 384: 384 *
+                                         (j + 1), i * 384:(i + 1) * 384].to(device).unsqueeze(0)
+                    else:
+                        crop_img = img[:, j * 384: 384 *
+                                       (j + 1), i * 384:(i + 1) * 384].to(device).unsqueeze(0)
+
+                        img_return = torch.cat(
+                            [img_return, crop_img], 0).to(device)
+
+            print(f"==========={img_return.shape}")
+
+            return img_return, gt_count
