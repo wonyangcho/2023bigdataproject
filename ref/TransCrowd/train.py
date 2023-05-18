@@ -1,4 +1,5 @@
 from __future__ import division
+import time
 import warnings
 from Networks.models import base_patch16_384_token, base_patch16_384_gap
 import torch.nn as nn
@@ -16,7 +17,6 @@ import numpy as np
 from image import load_data
 
 warnings.filterwarnings('ignore')
-import time
 
 setup_seed(args.seed)
 
@@ -64,7 +64,8 @@ def main(args):
             {'params': model.parameters(), 'lr': args['lr']},
         ], lr=args['lr'], weight_decay=args['weight_decay'])
 
-    scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones=[300], gamma=0.1, last_epoch=-1)
+    scheduler = torch.optim.lr_scheduler.MultiStepLR(
+        optimizer, milestones=[300], gamma=0.1, last_epoch=-1)
     print(args['pre'])
 
     # args['save_path'] = args['save_path'] + str(args['rdt'])
@@ -100,7 +101,8 @@ def main(args):
             is_best = prec1 < args['best_pred']
             args['best_pred'] = min(prec1, args['best_pred'])
 
-            print(' * best MAE {mae:.3f} '.format(mae=args['best_pred']), args['save_path'], end1 - start, end2 - end1)
+            print(' * best MAE {mae:.3f} '.format(
+                mae=args['best_pred']), args['save_path'], end1 - start, end2 - end1)
 
             save_checkpoint({
                 'epoch': epoch + 1,
@@ -109,8 +111,6 @@ def main(args):
                 'best_prec1': args['best_pred'],
                 'optimizer': optimizer.state_dict(),
             }, is_best, args['save_path'])
-
-
 
 
 def pre_data(train_list, args, train):
@@ -155,7 +155,8 @@ def train(Pre_data, model, criterion, optimizer, epoch, args, scheduler):
                             args=args),
         batch_size=args['batch_size'], drop_last=False)
     args['lr'] = optimizer.param_groups[0]['lr']
-    print('epoch %d, processed %d samples, lr %.10f' % (epoch, epoch * len(train_loader.dataset), args['lr']))
+    print('epoch %d, processed %d samples, lr %.10f' %
+          (epoch, epoch * len(train_loader.dataset), args['lr']))
 
     model.train()
     end = time.time()
@@ -166,7 +167,10 @@ def train(Pre_data, model, criterion, optimizer, epoch, args, scheduler):
         img = img.cuda()
 
         out1 = model(img)
+
         gt_count = gt_count.type(torch.FloatTensor).cuda().unsqueeze(1)
+
+        print(f"========{out1} ")
 
         # print(out1.shape, kpoint.shape)
         loss = criterion(out1, gt_count)
@@ -186,9 +190,9 @@ def train(Pre_data, model, criterion, optimizer, epoch, args, scheduler):
                   'Time {batch_time.val:.3f} ({batch_time.avg:.3f})\t'
                   'Data {data_time.val:.3f} ({data_time.avg:.3f})\t'
                   'Loss {loss.val:.4f} ({loss.avg:.4f})\t'
-                .format(
-                epoch, i, len(train_loader), batch_time=batch_time,
-                data_time=data_time, loss=losses))
+                  .format(
+                      epoch, i, len(train_loader), batch_time=batch_time,
+                      data_time=data_time, loss=losses))
 
     scheduler.step()
 
@@ -231,13 +235,15 @@ def validate(Pre_data, model, args):
         mse += abs(gt_count - count) * abs(gt_count - count)
 
         if i % 15 == 0:
-            print('{fname} Gt {gt:.2f} Pred {pred}'.format(fname=fname[0], gt=gt_count, pred=count))
+            print('{fname} Gt {gt:.2f} Pred {pred}'.format(
+                fname=fname[0], gt=gt_count, pred=count))
 
     mae = mae * 1.0 / (len(test_loader) * batch_size)
     mse = math.sqrt(mse / (len(test_loader)) * batch_size)
 
     nni.report_intermediate_result(mae)
-    print(' \n* MAE {mae:.3f}\n'.format(mae=mae), '* MSE {mse:.3f}'.format(mse=mse))
+    print(' \n* MAE {mae:.3f}\n'.format(mae=mae),
+          '* MSE {mse:.3f}'.format(mse=mse))
 
     return mae
 

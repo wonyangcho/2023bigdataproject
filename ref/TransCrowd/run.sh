@@ -1,0 +1,1 @@
+python train.py --dataset ShanghaiA  --save_path ../data/ShanghaiTech/ShanghaiA --batch_size 24 --model_type 'token' 

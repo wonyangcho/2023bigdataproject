@@ -247,12 +247,19 @@ def train_loop(args, labeled_loader, unlabeled_loader, test_loader, finetune_dat
             s_logits = student_model(s_images)
             s_logits_l = s_logits[:batch_size]
             s_logits_us = s_logits[batch_size:]
+
+            print(f"======={s_logits} {s_logits_l} {targets}")
+
             del s_logits
 
-            s_loss_l_old = criterion(s_logits_l.detach(), targets)
-            s_loss = criterion(s_logits_us, t_logits_uw.detach())
+        #    s_loss_l_old = criterion(s_logits_l.detach(), targets)
+        s_loss = criterion(s_logits_l, targets)
+        s_loss_l_old = s_loss
+        #     s_loss = criterion(s_logits_us, t_logits_uw.detach())
 
-        s_scaler.scale(s_loss).backward()
+        # s_scaler.scale(s_loss).backward()
+        s_scaler.scale(s_loss).backward()  # wycho 우선 student만
+
         if args.grad_clip > 0:
             s_scaler.unscale_(s_optimizer)
             nn.utils.clip_grad_norm_(
@@ -282,14 +289,16 @@ def train_loop(args, labeled_loader, unlabeled_loader, test_loader, finetune_dat
             # t_loss_mpl = torch.tensor(0.).to(args.device)
             t_loss = t_loss_uda + t_loss_mpl
 
-        t_scaler.scale(t_loss).backward()
-        if args.grad_clip > 0:
-            t_scaler.unscale_(t_optimizer)
-            nn.utils.clip_grad_norm_(
-                teacher_model.parameters(), args.grad_clip)
-        t_scaler.step(t_optimizer)
-        t_scaler.update()
-        t_scheduler.step()
+        # wycho 우선 student만
+        # t_scaler.scale(t_loss).backward()
+        # if args.grad_clip > 0:
+        #     t_scaler.unscale_(t_optimizer)
+        #     nn.utils.clip_grad_norm_(
+        #         teacher_model.parameters(), args.grad_clip)
+
+        # t_scaler.step(t_optimizer)
+        # t_scaler.update()
+        # t_scheduler.step()
 
         teacher_model.zero_grad()
         student_model.zero_grad()
