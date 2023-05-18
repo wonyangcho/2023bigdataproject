@@ -344,9 +344,15 @@ def train_loop(args, labeled_loader, unlabeled_loader, test_loader, finetune_dat
 #             wandb.log({"lr": get_lr(s_optimizer)})
 
         args.num_eval = step // args.eval_step
+
+        # print(f"{step+1} {args.eval_step} {(step + 1) % args.eval_step}")
+
         if (step + 1) % args.eval_step == 0:
             pbar.close()
             if args.local_rank in [-1, 0]:
+
+                print("==================logging")
+
                 args.writer.add_scalar(
                     "train/1.s_loss", s_losses.avg, args.num_eval)
                 args.writer.add_scalar(
@@ -544,7 +550,7 @@ def finetune(args, finetune_dataset, test_loader, model, criterion):
 
 def main():
     args = parser.parse_args()
-    args.best_loss = 0.
+    args.best_loss = float('inf')
 
     if args.local_rank != -1:
         args.gpu = args.local_rank
