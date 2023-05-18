@@ -212,6 +212,7 @@ class TransformMPL(object):
     def __call__(self, x):
         ori = self.ori(x)
         aug = self.aug(x)
+
         return self.normalize(ori), self.normalize(aug)
 
 

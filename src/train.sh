@@ -8,12 +8,12 @@ python main.py \
     --total-steps 300000 \
     --eval-step 1000 \
     --randaug 2 16 \
-    --batch-size 1 \
+    --batch-size 4 \
     --teacher_lr 0.05 \
     --student_lr 0.05 \
     --weight-decay 5e-4 \
     --nesterov \
-    --mu 7 \
+    --mu 1 \
     --temperature 0.7 \
     --threshold 0.6 \
     --lambda-u 8 \

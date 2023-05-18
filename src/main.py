@@ -201,6 +201,7 @@ def train_loop(args, labeled_loader, unlabeled_loader, test_loader, finetune_dat
             # error occurs ↓
             # images_l, targets = labeled_iter.next()
             images_l, targets = next(labeled_iter)
+
         except:
             if args.world_size > 1:
                 labeled_epoch += 1
@@ -214,6 +215,7 @@ def train_loop(args, labeled_loader, unlabeled_loader, test_loader, finetune_dat
             # error occurs ↓
             # (images_uw, images_us), _ = unlabeled_iter.next()
             (images_uw, images_us), _ = next(unlabeled_iter)
+
         except:
             if args.world_size > 1:
                 unlabeled_epoch += 1
@@ -244,15 +246,15 @@ def train_loop(args, labeled_loader, unlabeled_loader, test_loader, finetune_dat
             t_loss_uda = t_loss_l + weight_u * t_loss_u
 
             s_images = torch.cat((images_l, images_us))
+
             s_logits = student_model(s_images)
             s_logits_l = s_logits[:batch_size]
             s_logits_us = s_logits[batch_size:]
 
-            print(f"======={s_logits} {s_logits_l} {targets}")
-
             del s_logits
 
         #    s_loss_l_old = criterion(s_logits_l.detach(), targets)
+
         s_loss = criterion(s_logits_l, targets)
         s_loss_l_old = s_loss
         #     s_loss = criterion(s_logits_us, t_logits_uw.detach())
@@ -439,7 +441,9 @@ def evaluate(args, test_loader, model, criterion):
             targets = targets.to(args.device)
             with amp.autocast(enabled=args.amp):
                 outputs = model(images)
-                loss = criterion(outputs, targets)
+                count = torch.sum(outputs).item()
+                loss = criterion(torch.tensor(
+                    count).to(targets.device), targets)
 
             # acc1, acc5 = accuracy(outputs, targets, (1, 5))  # wycho
             losses.update(loss.item(), batch_size)
@@ -600,7 +604,7 @@ def main():
 
     test_loader = DataLoader(test_dataset,
                              sampler=SequentialSampler(test_dataset),
-                             batch_size=args.batch_size,
+                             batch_size=1,
                              num_workers=args.workers)
 
     if args.dataset == "cifar10":
