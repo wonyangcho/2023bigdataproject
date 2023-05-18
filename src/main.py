@@ -68,7 +68,9 @@ parser.add_argument('--weight-decay', default=0,
 parser.add_argument('--warmup-steps', default=0, type=int, help='warmup steps')
 parser.add_argument('--student-wait-steps', default=0,
                     type=int, help='warmup steps')
-parser.add_argument('--grad-clip', default=1e9, type=float,
+# parser.add_argument('--grad-clip', default=1e9, type=float,
+#                     help='gradient norm clipping')
+parser.add_argument('--grad-clip', default=0., type=float,
                     help='gradient norm clipping')
 parser.add_argument('--resume', default='', type=str,
                     help='path to checkpoint')
