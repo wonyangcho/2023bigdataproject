@@ -64,6 +64,4 @@ class listDataset(Dataset):
                         img_return = torch.cat(
                             [img_return, crop_img], 0).to(device)
 
-            print(f"==========={img_return.shape}")
-
             return img_return, gt_count

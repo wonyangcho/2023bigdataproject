@@ -227,7 +227,6 @@ def train_loop(args, labeled_loader, unlabeled_loader, test_loader, finetune_dat
         images_uw = images_uw.to(args.device)
         images_us = images_us.to(args.device)
         targets = targets.to(args.device)
-
         with amp.autocast(enabled=args.amp):
             batch_size = images_l.shape[0]
             t_images = torch.cat((images_l, images_uw, images_us))
@@ -237,20 +236,7 @@ def train_loop(args, labeled_loader, unlabeled_loader, test_loader, finetune_dat
             del t_logits
 
             t_loss_l = criterion(t_logits_l, targets)
-            soft_pseudo_label = t_logits_uw.detach()
-
-            # # soft_pseudo_label = torch.softmax(
-            # #     t_logits_uw.detach() / args.temperature, dim=-1)
-            # max_probs, hard_pseudo_label = torch.max(soft_pseudo_label, dim=-1)
-            # mask = max_probs.ge(args.threshold).float()
-            # t_loss_u = torch.mean(
-            #     -(soft_pseudo_label *
-            #       torch.log_softmax(t_logits_us, dim=-1)).sum(dim=-1) * mask
-            # )
-
-            # wycho -> 이 부분 해결해야함.
-            t_loss_u = criterion(t_logits_uw, t_logits_us)
-            hard_pseudo_label = soft_pseudo_label
+            t_loss_u = criterion(t_logits_us, t_logits_uw.detach())
 
             weight_u = args.lambda_u * min(1., (step + 1) / args.uda_steps)
             t_loss_uda = t_loss_l + weight_u * t_loss_u
@@ -261,9 +247,8 @@ def train_loop(args, labeled_loader, unlabeled_loader, test_loader, finetune_dat
             s_logits_us = s_logits[batch_size:]
             del s_logits
 
-            # s_loss_l_old = F.cross_entropy(s_logits_l.detach(), targets)
             s_loss_l_old = criterion(s_logits_l.detach(), targets)
-            s_loss = criterion(s_logits_us, hard_pseudo_label)
+            s_loss = criterion(s_logits_us, t_logits_uw.detach())
 
         s_scaler.scale(s_loss).backward()
         if args.grad_clip > 0:
@@ -279,7 +264,6 @@ def train_loop(args, labeled_loader, unlabeled_loader, test_loader, finetune_dat
         with amp.autocast(enabled=args.amp):
             with torch.no_grad():
                 s_logits_l = student_model(images_l)
-            # s_loss_l_new = F.cross_entropy(s_logits_l.detach(), targets)
             s_loss_l_new = criterion(s_logits_l.detach(), targets)
 
             # theoretically correct formula (https://github.com/kekmodel/MPL-pytorch/issues/6)
@@ -290,19 +274,13 @@ def train_loop(args, labeled_loader, unlabeled_loader, test_loader, finetune_dat
             # moving_dot_product = moving_dot_product * 0.99 + dot_product * 0.01
             # dot_product = dot_product - moving_dot_product
 
-            # _, hard_pseudo_label = torch.max(t_logits_us.detach(), dim=-1)
-            hard_pseudo_label = t_logits_us.detach()
-
-            # t_loss_mpl = dot_product * \
-            #     F.cross_entropy(t_logits_us, hard_pseudo_label)
-
             t_loss_mpl = dot_product * \
-                criterion(t_logits_us, hard_pseudo_label)
-
+                criterion(t_logits_us, t_logits_uw.detach())
+            # test
+            # t_loss_mpl = torch.tensor(0.).to(args.device)
             t_loss = t_loss_uda + t_loss_mpl
 
-        # t_scaler.scale(t_loss).backward()
-        t_scaler.scale(t_loss.mean()).backward()  # wycho
+        t_scaler.scale(t_loss).backward()
         if args.grad_clip > 0:
             t_scaler.unscale_(t_optimizer)
             nn.utils.clip_grad_norm_(
