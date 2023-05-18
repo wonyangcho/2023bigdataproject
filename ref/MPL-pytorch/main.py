@@ -27,49 +27,80 @@ logger = logging.getLogger(__name__)
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--name', type=str, required=True, help='experiment name')
-parser.add_argument('--data-path', default='./data', type=str, help='data path')
-parser.add_argument('--save-path', default='./checkpoint', type=str, help='save path')
+parser.add_argument('--data-path', default='./data',
+                    type=str, help='data path')
+parser.add_argument('--save-path', default='./checkpoint',
+                    type=str, help='save path')
 parser.add_argument('--dataset', default='cifar10', type=str,
                     choices=['cifar10', 'cifar100'], help='dataset name')
-parser.add_argument('--num-labeled', type=int, default=4000, help='number of labeled data')
-parser.add_argument("--expand-labels", action="store_true", help="expand labels to fit eval steps")
-parser.add_argument('--total-steps', default=300000, type=int, help='number of total steps to run')
-parser.add_argument('--eval-step', default=1000, type=int, help='number of eval steps to run')
+parser.add_argument('--num-labeled', type=int, default=4000,
+                    help='number of labeled data')
+parser.add_argument("--expand-labels", action="store_true",
+                    help="expand labels to fit eval steps")
+parser.add_argument('--total-steps', default=300000,
+                    type=int, help='number of total steps to run')
+parser.add_argument('--eval-step', default=1000, type=int,
+                    help='number of eval steps to run')
 parser.add_argument('--start-step', default=0, type=int,
                     help='manual epoch number (useful on restarts)')
 parser.add_argument('--workers', default=4, type=int, help='number of workers')
-parser.add_argument('--num-classes', default=10, type=int, help='number of classes')
+parser.add_argument('--num-classes', default=10,
+                    type=int, help='number of classes')
 parser.add_argument('--resize', default=32, type=int, help='resize image')
-parser.add_argument('--batch-size', default=64, type=int, help='train batch size')
-parser.add_argument('--teacher-dropout', default=0, type=float, help='dropout on last dense layer')
-parser.add_argument('--student-dropout', default=0, type=float, help='dropout on last dense layer')
-parser.add_argument('--teacher_lr', default=0.01, type=float, help='train learning late')
-parser.add_argument('--student_lr', default=0.01, type=float, help='train learning late')
+parser.add_argument('--batch-size', default=64,
+                    type=int, help='train batch size')
+parser.add_argument('--teacher-dropout', default=0,
+                    type=float, help='dropout on last dense layer')
+parser.add_argument('--student-dropout', default=0,
+                    type=float, help='dropout on last dense layer')
+parser.add_argument('--teacher_lr', default=0.01,
+                    type=float, help='train learning late')
+parser.add_argument('--student_lr', default=0.01,
+                    type=float, help='train learning late')
 parser.add_argument('--momentum', default=0.9, type=float, help='SGD Momentum')
 parser.add_argument('--nesterov', action='store_true', help='use nesterov')
-parser.add_argument('--weight-decay', default=0, type=float, help='train weight decay')
+parser.add_argument('--weight-decay', default=0,
+                    type=float, help='train weight decay')
 parser.add_argument('--ema', default=0, type=float, help='EMA decay rate')
 parser.add_argument('--warmup-steps', default=0, type=int, help='warmup steps')
-parser.add_argument('--student-wait-steps', default=0, type=int, help='warmup steps')
-parser.add_argument('--grad-clip', default=1e9, type=float, help='gradient norm clipping')
-parser.add_argument('--resume', default='', type=str, help='path to checkpoint')
-parser.add_argument('--evaluate', action='store_true', help='only evaluate model on validation set')
+parser.add_argument('--student-wait-steps', default=0,
+                    type=int, help='warmup steps')
+parser.add_argument('--grad-clip', default=1e9, type=float,
+                    help='gradient norm clipping')
+parser.add_argument('--resume', default='', type=str,
+                    help='path to checkpoint')
+parser.add_argument('--evaluate', action='store_true',
+                    help='only evaluate model on validation set')
 parser.add_argument('--finetune', action='store_true',
                     help='only finetune model on labeled dataset')
-parser.add_argument('--finetune-epochs', default=625, type=int, help='finetune epochs')
-parser.add_argument('--finetune-batch-size', default=512, type=int, help='finetune batch size')
-parser.add_argument('--finetune-lr', default=3e-5, type=float, help='finetune learning late')
-parser.add_argument('--finetune-weight-decay', default=0, type=float, help='finetune weight decay')
-parser.add_argument('--finetune-momentum', default=0.9, type=float, help='finetune SGD Momentum')
-parser.add_argument('--seed', default=None, type=int, help='seed for initializing training')
-parser.add_argument('--label-smoothing', default=0, type=float, help='label smoothing alpha')
-parser.add_argument('--mu', default=7, type=int, help='coefficient of unlabeled batch size')
-parser.add_argument('--threshold', default=0.95, type=float, help='pseudo label threshold')
-parser.add_argument('--temperature', default=1, type=float, help='pseudo label temperature')
-parser.add_argument('--lambda-u', default=1, type=float, help='coefficient of unlabeled loss')
-parser.add_argument('--uda-steps', default=1, type=float, help='warmup steps of lambda-u')
-parser.add_argument("--randaug", nargs="+", type=int, help="use it like this. --randaug 2 10")
-parser.add_argument("--amp", action="store_true", help="use 16-bit (mixed) precision")
+parser.add_argument('--finetune-epochs', default=625,
+                    type=int, help='finetune epochs')
+parser.add_argument('--finetune-batch-size', default=512,
+                    type=int, help='finetune batch size')
+parser.add_argument('--finetune-lr', default=3e-5,
+                    type=float, help='finetune learning late')
+parser.add_argument('--finetune-weight-decay', default=0,
+                    type=float, help='finetune weight decay')
+parser.add_argument('--finetune-momentum', default=0.9,
+                    type=float, help='finetune SGD Momentum')
+parser.add_argument('--seed', default=None, type=int,
+                    help='seed for initializing training')
+parser.add_argument('--label-smoothing', default=0,
+                    type=float, help='label smoothing alpha')
+parser.add_argument('--mu', default=7, type=int,
+                    help='coefficient of unlabeled batch size')
+parser.add_argument('--threshold', default=0.95,
+                    type=float, help='pseudo label threshold')
+parser.add_argument('--temperature', default=1, type=float,
+                    help='pseudo label temperature')
+parser.add_argument('--lambda-u', default=1, type=float,
+                    help='coefficient of unlabeled loss')
+parser.add_argument('--uda-steps', default=1, type=float,
+                    help='warmup steps of lambda-u')
+parser.add_argument("--randaug", nargs="+", type=int,
+                    help="use it like this. --randaug 2 10")
+parser.add_argument("--amp", action="store_true",
+                    help="use 16-bit (mixed) precision")
 parser.add_argument('--world-size', default=-1, type=int,
                     help='number of nodes for distributed training')
 parser.add_argument("--local_rank", type=int, default=-1,
@@ -130,7 +161,8 @@ def train_loop(args, labeled_loader, unlabeled_loader, test_loader, finetune_dat
 
     for step in range(args.start_step, args.total_steps):
         if step % args.eval_step == 0:
-            pbar = tqdm(range(args.eval_step), disable=args.local_rank not in [-1, 0])
+            pbar = tqdm(range(args.eval_step),
+                        disable=args.local_rank not in [-1, 0])
             batch_time = AverageMeter()
             data_time = AverageMeter()
             s_losses = AverageMeter()
@@ -153,8 +185,6 @@ def train_loop(args, labeled_loader, unlabeled_loader, test_loader, finetune_dat
                 labeled_epoch += 1
                 labeled_loader.sampler.set_epoch(labeled_epoch)
             labeled_iter = iter(labeled_loader)
-            # error occurs ↓
-            # images_l, targets = labeled_iter.next()
             images_l, targets = next(labeled_iter)
 
         try:
@@ -186,11 +216,13 @@ def train_loop(args, labeled_loader, unlabeled_loader, test_loader, finetune_dat
 
             t_loss_l = criterion(t_logits_l, targets)
 
-            soft_pseudo_label = torch.softmax(t_logits_uw.detach() / args.temperature, dim=-1)
+            soft_pseudo_label = torch.softmax(
+                t_logits_uw.detach() / args.temperature, dim=-1)
             max_probs, hard_pseudo_label = torch.max(soft_pseudo_label, dim=-1)
             mask = max_probs.ge(args.threshold).float()
             t_loss_u = torch.mean(
-                -(soft_pseudo_label * torch.log_softmax(t_logits_us, dim=-1)).sum(dim=-1) * mask
+                -(soft_pseudo_label *
+                  torch.log_softmax(t_logits_us, dim=-1)).sum(dim=-1) * mask
             )
             weight_u = args.lambda_u * min(1., (step + 1) / args.uda_steps)
             t_loss_uda = t_loss_l + weight_u * t_loss_u
@@ -207,7 +239,8 @@ def train_loop(args, labeled_loader, unlabeled_loader, test_loader, finetune_dat
         s_scaler.scale(s_loss).backward()
         if args.grad_clip > 0:
             s_scaler.unscale_(s_optimizer)
-            nn.utils.clip_grad_norm_(student_model.parameters(), args.grad_clip)
+            nn.utils.clip_grad_norm_(
+                student_model.parameters(), args.grad_clip)
         s_scaler.step(s_optimizer)
         s_scaler.update()
         s_scheduler.step()
@@ -228,7 +261,8 @@ def train_loop(args, labeled_loader, unlabeled_loader, test_loader, finetune_dat
             # dot_product = dot_product - moving_dot_product
 
             _, hard_pseudo_label = torch.max(t_logits_us.detach(), dim=-1)
-            t_loss_mpl = dot_product * F.cross_entropy(t_logits_us, hard_pseudo_label)
+            t_loss_mpl = dot_product * \
+                F.cross_entropy(t_logits_us, hard_pseudo_label)
             # test
             # t_loss_mpl = torch.tensor(0.).to(args.device)
             t_loss = t_loss_uda + t_loss_mpl
@@ -236,7 +270,8 @@ def train_loop(args, labeled_loader, unlabeled_loader, test_loader, finetune_dat
         t_scaler.scale(t_loss).backward()
         if args.grad_clip > 0:
             t_scaler.unscale_(t_optimizer)
-            nn.utils.clip_grad_norm_(teacher_model.parameters(), args.grad_clip)
+            nn.utils.clip_grad_norm_(
+                teacher_model.parameters(), args.grad_clip)
         t_scaler.step(t_optimizer)
         t_scaler.update()
         t_scheduler.step()
@@ -274,12 +309,18 @@ def train_loop(args, labeled_loader, unlabeled_loader, test_loader, finetune_dat
         if (step + 1) % args.eval_step == 0:
             pbar.close()
             if args.local_rank in [-1, 0]:
-                args.writer.add_scalar("train/1.s_loss", s_losses.avg, args.num_eval)
-                args.writer.add_scalar("train/2.t_loss", t_losses.avg, args.num_eval)
-                args.writer.add_scalar("train/3.t_labeled", t_losses_l.avg, args.num_eval)
-                args.writer.add_scalar("train/4.t_unlabeled", t_losses_u.avg, args.num_eval)
-                args.writer.add_scalar("train/5.t_mpl", t_losses_mpl.avg, args.num_eval)
-                args.writer.add_scalar("train/6.mask", mean_mask.avg, args.num_eval)
+                args.writer.add_scalar(
+                    "train/1.s_loss", s_losses.avg, args.num_eval)
+                args.writer.add_scalar(
+                    "train/2.t_loss", t_losses.avg, args.num_eval)
+                args.writer.add_scalar(
+                    "train/3.t_labeled", t_losses_l.avg, args.num_eval)
+                args.writer.add_scalar(
+                    "train/4.t_unlabeled", t_losses_u.avg, args.num_eval)
+                args.writer.add_scalar(
+                    "train/5.t_mpl", t_losses_mpl.avg, args.num_eval)
+                args.writer.add_scalar(
+                    "train/6.mask", mean_mask.avg, args.num_eval)
 #                 wandb.log({"train/1.s_loss": s_losses.avg,
 #                            "train/2.t_loss": t_losses.avg,
 #                            "train/3.t_labeled": t_losses_l.avg,
@@ -288,7 +329,8 @@ def train_loop(args, labeled_loader, unlabeled_loader, test_loader, finetune_dat
 #                            "train/6.mask": mean_mask.avg})
 
                 test_model = avg_student_model if avg_student_model is not None else student_model
-                test_loss, top1, top5 = evaluate(args, test_loader, test_model, criterion)
+                test_loss, top1, top5 = evaluate(
+                    args, test_loader, test_model, criterion)
 
                 args.writer.add_scalar("test/loss", test_loss, args.num_eval)
                 args.writer.add_scalar("test/acc@1", top1, args.num_eval)
@@ -389,7 +431,8 @@ def finetune(args, finetune_dataset, test_loader, model, criterion):
     scaler = amp.GradScaler(enabled=args.amp)
 
     logger.info("***** Running Finetuning *****")
-    logger.info(f"   Finetuning steps = {len(labeled_loader)*args.finetune_epochs}")
+    logger.info(
+        f"   Finetuning steps = {len(labeled_loader)*args.finetune_epochs}")
 
     for epoch in range(args.finetune_epochs):
         if args.world_size > 1:
@@ -400,7 +443,8 @@ def finetune(args, finetune_dataset, test_loader, model, criterion):
         losses = AverageMeter()
         model.train()
         end = time.time()
-        labeled_iter = tqdm(labeled_loader, disable=args.local_rank not in [-1, 0])
+        labeled_iter = tqdm(
+            labeled_loader, disable=args.local_rank not in [-1, 0])
         for step, (images, targets) in enumerate(labeled_iter):
             data_time.update(time.time() - end)
             batch_size = images.shape[0]
@@ -425,7 +469,8 @@ def finetune(args, finetune_dataset, test_loader, model, criterion):
         labeled_iter.close()
         if args.local_rank in [-1, 0]:
             args.writer.add_scalar("finetune/train_loss", losses.avg, epoch)
-            test_loss, top1, top5 = evaluate(args, test_loader, model, criterion)
+            test_loss, top1, top5 = evaluate(
+                args, test_loader, model, criterion)
             args.writer.add_scalar("finetune/test_loss", test_loss, epoch)
             args.writer.add_scalar("finetune/acc@1", top1, epoch)
             args.writer.add_scalar("finetune/acc@5", top5, epoch)
@@ -494,7 +539,8 @@ def main():
     if args.local_rank not in [-1, 0]:
         torch.distributed.barrier()
 
-    labeled_dataset, unlabeled_dataset, test_dataset, finetune_dataset = DATASET_GETTERS[args.dataset](args)
+    labeled_dataset, unlabeled_dataset, test_dataset, finetune_dataset = DATASET_GETTERS[args.dataset](
+        args)
 
     if args.local_rank == 0:
         torch.distributed.barrier()
@@ -542,7 +588,8 @@ def main():
         torch.distributed.barrier()
 
     logger.info(f"Model: WideResNet {depth}x{widen_factor}")
-    logger.info(f"Params: {sum(p.numel() for p in teacher_model.parameters())/1e6:.2f}M")
+    logger.info(
+        f"Params: {sum(p.numel() for p in teacher_model.parameters())/1e6:.2f}M")
 
     teacher_model.to(args.device)
     student_model.to(args.device)
@@ -602,17 +649,22 @@ def main():
                 s_scheduler.load_state_dict(checkpoint['student_scheduler'])
                 t_scaler.load_state_dict(checkpoint['teacher_scaler'])
                 s_scaler.load_state_dict(checkpoint['student_scaler'])
-                model_load_state_dict(teacher_model, checkpoint['teacher_state_dict'])
+                model_load_state_dict(
+                    teacher_model, checkpoint['teacher_state_dict'])
                 if avg_student_model is not None:
-                    model_load_state_dict(avg_student_model, checkpoint['avg_state_dict'])
+                    model_load_state_dict(
+                        avg_student_model, checkpoint['avg_state_dict'])
 
             else:
                 if checkpoint['avg_state_dict'] is not None:
-                    model_load_state_dict(student_model, checkpoint['avg_state_dict'])
+                    model_load_state_dict(
+                        student_model, checkpoint['avg_state_dict'])
                 else:
-                    model_load_state_dict(student_model, checkpoint['student_state_dict'])
+                    model_load_state_dict(
+                        student_model, checkpoint['student_state_dict'])
 
-            logger.info(f"=> loaded checkpoint '{args.resume}' (step {checkpoint['step']})")
+            logger.info(
+                f"=> loaded checkpoint '{args.resume}' (step {checkpoint['step']})")
         else:
             logger.info(f"=> no checkpoint found at '{args.resume}'")
 
