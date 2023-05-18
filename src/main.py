@@ -1,3 +1,17 @@
+from logger import web_logger
+from utils import (AverageMeter, accuracy, create_loss_fn,
+                   save_checkpoint, reduce_tensor, model_load_state_dict)
+from models.trans_crowd import base_patch16_384_token, base_patch16_384_gap
+from data import DATASET_GETTERS
+from tqdm import tqdm
+from torch.utils.tensorboard import SummaryWriter
+from torch.utils.data.distributed import DistributedSampler
+from torch.utils.data import DataLoader, RandomSampler, SequentialSampler
+from torch.optim.lr_scheduler import LambdaLR
+from torch import optim
+from torch.nn import functional as F
+from torch import nn
+from torch.cuda import amp
 import argparse
 import logging
 import math
@@ -7,24 +21,11 @@ import time
 
 import numpy as np
 import torch
-from torch.cuda import amp
-from torch import nn
-from torch.nn import functional as F
-from torch import optim
-from torch.optim.lr_scheduler import LambdaLR
-from torch.utils.data import DataLoader, RandomSampler, SequentialSampler
-from torch.utils.data.distributed import DistributedSampler
-from torch.utils.tensorboard import SummaryWriter
+# torch.autograd.set_detect_anomaly(True)
 # import wandb
-from tqdm import tqdm
 
-from data import DATASET_GETTERS
 # from models.models import WideResNet, ModelEMA
-from models.trans_crowd import base_patch16_384_token, base_patch16_384_gap
-from utils import (AverageMeter, accuracy, create_loss_fn,
-                   save_checkpoint, reduce_tensor, model_load_state_dict)
 
-from logger import web_logger
 
 logger = logging.getLogger(__name__)
 
@@ -162,6 +163,7 @@ def get_lr(optimizer):
 def train_loop(args, labeled_loader, unlabeled_loader, test_loader, finetune_dataset,
                teacher_model, student_model, avg_student_model, criterion,
                t_optimizer, s_optimizer, t_scheduler, s_scheduler, t_scaler, s_scaler):
+
     logger.info("***** Running Training *****")
     logger.info(f"   Task = {args.dataset}@{args.num_labeled}")
     logger.info(f"   Total steps = {args.total_steps}")
@@ -198,31 +200,21 @@ def train_loop(args, labeled_loader, unlabeled_loader, test_loader, finetune_dat
         end = time.time()
 
         try:
-            # error occurs ↓
-            # images_l, targets = labeled_iter.next()
             images_l, targets = next(labeled_iter)
-
         except:
             if args.world_size > 1:
                 labeled_epoch += 1
                 labeled_loader.sampler.set_epoch(labeled_epoch)
             labeled_iter = iter(labeled_loader)
-            # error occurs ↓
-            # images_l, targets = labeled_iter.next()
             images_l, targets = next(labeled_iter)
 
         try:
-            # error occurs ↓
-            # (images_uw, images_us), _ = unlabeled_iter.next()
             (images_uw, images_us), _ = next(unlabeled_iter)
-
         except:
             if args.world_size > 1:
                 unlabeled_epoch += 1
                 unlabeled_loader.sampler.set_epoch(unlabeled_epoch)
             unlabeled_iter = iter(unlabeled_loader)
-            # error occurs ↓
-            # (images_uw, images_us), _ = unlabeled_iter.next()
             (images_uw, images_us), _ = next(unlabeled_iter)
 
         data_time.update(time.time() - end)
@@ -231,6 +223,7 @@ def train_loop(args, labeled_loader, unlabeled_loader, test_loader, finetune_dat
         images_uw = images_uw.to(args.device)
         images_us = images_us.to(args.device)
         targets = targets.to(args.device)
+
         with amp.autocast(enabled=args.amp):
             batch_size = images_l.shape[0]
             t_images = torch.cat((images_l, images_uw, images_us))
@@ -253,14 +246,10 @@ def train_loop(args, labeled_loader, unlabeled_loader, test_loader, finetune_dat
 
             del s_logits
 
-        #    s_loss_l_old = criterion(s_logits_l.detach(), targets)
+            s_loss_l_old = criterion(s_logits_l.detach(), targets)
+            s_loss = criterion(s_logits_us, t_logits_uw.detach())
 
-        s_loss = criterion(s_logits_l, targets)
-        s_loss_l_old = s_loss
-        #     s_loss = criterion(s_logits_us, t_logits_uw.detach())
-
-        # s_scaler.scale(s_loss).backward()
-        s_scaler.scale(s_loss).backward()  # wycho 우선 student만
+        s_scaler.scale(s_loss).backward()
 
         if args.grad_clip > 0:
             s_scaler.unscale_(s_optimizer)
@@ -275,32 +264,23 @@ def train_loop(args, labeled_loader, unlabeled_loader, test_loader, finetune_dat
         with amp.autocast(enabled=args.amp):
             with torch.no_grad():
                 s_logits_l = student_model(images_l)
+
             s_loss_l_new = criterion(s_logits_l.detach(), targets)
-
-            # theoretically correct formula (https://github.com/kekmodel/MPL-pytorch/issues/6)
-            # dot_product = s_loss_l_old - s_loss_l_new
-
-            # author's code formula
             dot_product = s_loss_l_new - s_loss_l_old
-            # moving_dot_product = moving_dot_product * 0.99 + dot_product * 0.01
-            # dot_product = dot_product - moving_dot_product
 
             t_loss_mpl = dot_product * \
                 criterion(t_logits_us, t_logits_uw.detach())
-            # test
-            # t_loss_mpl = torch.tensor(0.).to(args.device)
             t_loss = t_loss_uda + t_loss_mpl
 
-        # wycho 우선 student만
-        # t_scaler.scale(t_loss).backward()
-        # if args.grad_clip > 0:
-        #     t_scaler.unscale_(t_optimizer)
-        #     nn.utils.clip_grad_norm_(
-        #         teacher_model.parameters(), args.grad_clip)
+        t_scaler.scale(t_loss).backward()
+        if args.grad_clip > 0:
+            t_scaler.unscale_(t_optimizer)
+            nn.utils.clip_grad_norm_(
+                teacher_model.parameters(), args.grad_clip)
 
-        # t_scaler.step(t_optimizer)
-        # t_scaler.update()
-        # t_scheduler.step()
+        t_scaler.step(t_optimizer)
+        t_scaler.update()
+        t_scheduler.step()
 
         teacher_model.zero_grad()
         student_model.zero_grad()
@@ -314,11 +294,11 @@ def train_loop(args, labeled_loader, unlabeled_loader, test_loader, finetune_dat
             # mask = reduce_tensor(mask, args.world_size)
 
         s_losses.update(s_loss.item())
-        # t_losses.update(t_loss.item())
-        t_losses.update(t_loss.mean().item())  # wycho
+
+        t_losses.update(t_loss.mean().item())
         t_losses_l.update(t_loss_l.item())
-        # t_losses_u.update(t_loss_u.item())
-        t_losses_u.update(t_loss_u.mean().item())  # wycho
+
+        t_losses_u.update(t_loss_u.mean().item())
         t_losses_mpl.update(t_loss_mpl.item())
         # mean_mask.update(mask.mean().item())
 

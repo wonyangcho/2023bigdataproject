@@ -9,8 +9,8 @@ python main.py \
     --eval-step 1000 \
     --randaug 2 16 \
     --batch-size 4 \
-    --teacher_lr 0.05 \
-    --student_lr 0.05 \
+    --teacher_lr 1e-5 \
+    --student_lr 1e-5 \
     --weight-decay 5e-4 \
     --nesterov \
     --mu 1 \
@@ -27,9 +27,10 @@ python main.py \
     --finetune-lr 3e-5 \
     --finetune-weight-decay 0 \
     --finetune-momentum 0.9 \
-    --amp \
     --home "/work/wycho/2023bigdataproject/src/" \
     --train_l_data "npydata/qnrf_train.npy" \
     --train_ul_data "npydata/ShanghaiA_train.npy" \
     --test_l_data "/npydata/qnrf_test.npy" \
-    --use_wandb 
+    --use_wandb \
+    --description "1st" \
+    --amp
