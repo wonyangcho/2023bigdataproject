@@ -282,42 +282,44 @@ def train(args, labeled_loader, unlabeled_loader, test_loader,
         images_us = images_us.to(args.device)
         targets = targets.to(args.device)
 
-        batch_size = images_l.shape[0]
-        t_images = torch.cat((images_l, images_uw, images_us))
-        t_logits = teacher_model(t_images)
-        t_logits_l = t_logits[:batch_size]
-        t_logits_uw, t_logits_us = t_logits[batch_size:].chunk(2)
-        del t_logits
+        with amp.autocast(enabled=args.amp):
+            batch_size = images_l.shape[0]
+            t_images = torch.cat((images_l, images_uw, images_us))
+            t_logits = teacher_model(t_images)
+            t_logits_l = t_logits[:batch_size]
+            t_logits_uw, t_logits_us = t_logits[batch_size:].chunk(2)
+            del t_logits
 
-        t_loss_l = criterion(t_logits_l, targets)
-        t_loss_u = criterion(t_logits_us, t_logits_uw.detach())
+            t_loss_l = criterion(t_logits_l, targets)
+            t_loss_u = criterion(t_logits_us, t_logits_uw.detach())
 
-        weight_u = args.lambda_u * min(1., (step + 1) / args.uda_steps)
-        t_loss_uda = t_loss_l + weight_u * t_loss_u
+            weight_u = args.lambda_u * min(1., (step + 1) / args.uda_steps)
+            t_loss_uda = t_loss_l + weight_u * t_loss_u
 
-        s_images = torch.cat((images_l, images_us))
+            s_images = torch.cat((images_l, images_us))
 
-        s_logits = student_model(s_images)
-        s_logits_l = s_logits[:batch_size]
-        s_logits_us = s_logits[batch_size:]
+            s_logits = student_model(s_images)
+            s_logits_l = s_logits[:batch_size]
+            s_logits_us = s_logits[batch_size:]
 
-        del s_logits
+            del s_logits
 
-        s_loss_l_old = criterion(s_logits_l.detach(), targets)
-        s_loss = criterion(s_logits_us, t_logits_uw.detach())
+            s_loss_l_old = criterion(s_logits_l.detach(), targets)
+            s_loss = criterion(s_logits_us, t_logits_uw.detach())
 
         s_loss.backward()
         s_optimizer.step()
 
-        with torch.no_grad():
-            s_logits_l = student_model(images_l)
+        with amp.autocast(enabled=args.amp):
+            with torch.no_grad():
+                s_logits_l = student_model(images_l)
 
-        s_loss_l_new = criterion(s_logits_l.detach(), targets)
-        dot_product = s_loss_l_new - s_loss_l_old
+            s_loss_l_new = criterion(s_logits_l.detach(), targets)
+            dot_product = s_loss_l_new - s_loss_l_old
 
-        t_loss_mpl = dot_product * \
-            criterion(t_logits_us, t_logits_uw.detach())
-        t_loss = t_loss_uda + t_loss_mpl
+            t_loss_mpl = dot_product * \
+                criterion(t_logits_us, t_logits_uw.detach())
+            t_loss = t_loss_uda + t_loss_mpl
 
         t_loss.backward()
         t_optimizer.step()
