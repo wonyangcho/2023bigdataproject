@@ -28,6 +28,7 @@ def create_loss_fn(args):
 
     criterion = nn.L1Loss(size_average=False)
     # criterion = nn.MSELoss()
+
     return criterion.to(args.device)
 
 

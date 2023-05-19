@@ -27,8 +27,8 @@ cifar10_mean = (0.491400, 0.482158, 0.4465231)
 cifar10_std = (0.247032, 0.243485, 0.2615877)
 cifar100_mean = (0.507075, 0.486549, 0.440918)
 cifar100_std = (0.267334, 0.256438, 0.276151)
-normal_mean = (0.5, 0.5, 0.5)
-normal_std = (0.5, 0.5, 0.5)
+normal_mean = (0.485, 0.456, 0.406)
+normal_std = (0.229, 0.224, 0.225)
 
 
 def get_cifar10(args):
@@ -336,7 +336,7 @@ def get_crowd(args):
         n, m = 2, 10  # default
 
     transform_labeled = transforms.Compose([
-        transforms.RandomHorizontalFlip(),
+        # transforms.RandomHorizontalFlip(),
         # transforms.RandomCrop(size=args.resize,
         #                       padding=int(args.resize * 0.125),
         #                       fill=128,
@@ -344,25 +344,25 @@ def get_crowd(args):
         transforms.ToTensor(),
         transforms.Normalize(mean=cifar100_mean, std=cifar100_std)])
     transform_finetune = transforms.Compose([
-        transforms.RandomHorizontalFlip(),
+        # transforms.RandomHorizontalFlip(),
         # transforms.RandomCrop(size=args.resize,
         #                       padding=int(args.resize * 0.125),
         #                       fill=128,
         #                       padding_mode='constant'),
-        RandAugmentCIFAR(n=n, m=m),
+        # RandAugmentCIFAR(n=n, m=m),
         transforms.ToTensor(),
-        transforms.Normalize(mean=cifar100_mean, std=cifar100_std)])
+        transforms.Normalize(mean=normal_mean, std=normal_std)])
 
     transform_val = transforms.Compose([
         transforms.ToTensor(),
-        transforms.Normalize(mean=cifar100_mean, std=cifar100_std)])
+        transforms.Normalize(mean=normal_mean, std=normal_std)])
 
     train_labeled_dataset = listDataset(
         train_l_data, transform_labeled, train=True, args=args)
     finetune_dataset = listDataset(
         train_l_data, transform_finetune, train=True, args=args)
     train_unlabeled_dataset = listDataset(train_ul_data, TransformMPL(
-        args, mean=cifar100_mean, std=cifar100_std), train=True, args=args)
+        args, mean=normal_mean, std=normal_std), train=True, args=args)
     test_dataset = listDataset(
         test_data, transform_val, train=False, args=args)
 

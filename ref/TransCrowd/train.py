@@ -175,6 +175,8 @@ def train(Pre_data, model, criterion, optimizer, epoch, args, scheduler):
         # print(out1.shape, kpoint.shape)
         loss = criterion(out1, gt_count)
 
+        print(f"===={loss}")
+
         losses.update(loss.item(), img.size(0))
         optimizer.zero_grad()
 
