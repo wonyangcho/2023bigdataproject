@@ -9,8 +9,8 @@ python main.py \
     --eval_step 1000 \
     --randaug 2 16 \
     --batch_size 4 \
-    --teacher_lr 0.05\
-    --student_lr 0.05 \
+    --teacher_lr 1e-5\
+    --student_lr 1e-5 \
     --weight_decay 5e-4 \
     --nesterov \
     --mu 1 \
