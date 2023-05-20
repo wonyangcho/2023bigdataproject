@@ -9,9 +9,7 @@ python main.py \
     --eval_step 1000 \
     --randaug 2 16 \
     --batch_size 4 \
-    --teacher_initial_lr 0.001\
-    --teacher_lr 0.00001\
-    --student_initial_lr 0.001\
+    --teacher_lr 0.0001\
     --student_lr 0.00001 \
     --weight_decay 5e-4 \
     --nesterov \
@@ -21,7 +19,7 @@ python main.py \
     --lambda_u 8 \
     --warmup_steps 0 \
     --uda_steps 5000 \
-    --student_wait_steps 1000 \
+    --student_wait_steps 0 \
     --teacher_dropout 0.2 \
     --student_dropout 0.2 \
     --finetune_epochs 250 \

@@ -57,11 +57,7 @@ parser.add_argument('--student_dropout', default=0,
                     type=float, help='dropout on last dense layer')
 parser.add_argument('--teacher_lr', default=0.01,
                     type=float, help='train learning late')
-parser.add_argument('--teacher_initial_lr', default=0.01,
-                    type=float, help='train learning late')
 parser.add_argument('--student_lr', default=0.01,
-                    type=float, help='train learning late')
-parser.add_argument('--student_initial_lr', default=0.01,
                     type=float, help='train learning late')
 parser.add_argument('--momentum', default=0.9, type=float, help='SGD Momentum')
 parser.add_argument('--nesterov', action='store_true', help='use nesterov')
@@ -141,21 +137,19 @@ def set_seed(args):
 def get_cosine_schedule_with_warmup(optimizer,
                                     num_warmup_steps,
                                     num_training_steps,
-                                    initial_lr,
-                                    final_lr,
                                     num_wait_steps=0,
                                     num_cycles=0.5,
                                     last_epoch=-1):
     def lr_lambda(current_step):
         if current_step < num_wait_steps:
-            return initial_lr
+            return 0.0
 
         if current_step < num_warmup_steps + num_wait_steps:
-            return initial_lr + (current_step - num_wait_steps) / (num_warmup_steps) * (final_lr - initial_lr)
+            return float(current_step) / float(max(1, num_warmup_steps + num_wait_steps))
 
         progress = float(current_step - num_warmup_steps - num_wait_steps) / \
             float(max(1, num_training_steps - num_warmup_steps - num_wait_steps))
-        return max(final_lr, initial_lr + (0.5 * (1.0 + math.cos(math.pi * float(num_cycles) * 2.0 * progress))) * (final_lr - initial_lr))
+        return max(0.0, 0.5 * (1.0 + math.cos(math.pi * float(num_cycles) * 2.0 * progress)))
 
     return LambdaLR(optimizer, lr_lambda, last_epoch)
 
@@ -320,14 +314,10 @@ def main():
 
     t_scheduler = get_cosine_schedule_with_warmup(t_optimizer,
                                                   args.warmup_steps,
-                                                  args.total_steps,
-                                                  args.teacher_initial_lr,
-                                                  args.teacher_lr)
+                                                  args.total_steps)
     s_scheduler = get_cosine_schedule_with_warmup(s_optimizer,
                                                   args.warmup_steps,
                                                   args.total_steps,
-                                                  args.student_initial_lr,
-                                                  args.student_lr,
                                                   args.student_wait_steps,)
 
     if args.finetune:
