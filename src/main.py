@@ -148,17 +148,14 @@ def get_cosine_schedule_with_warmup(optimizer,
                                     last_epoch=-1):
     def lr_lambda(current_step):
         if current_step < num_wait_steps:
-            return 0.0
+            return initial_lr
 
         if current_step < num_warmup_steps + num_wait_steps:
-            return initial_lr + (current_step / max(1, num_warmup_steps + num_wait_steps)) * (final_lr - initial_lr)
+            return initial_lr + (current_step - num_wait_steps) / (num_warmup_steps) * (final_lr - initial_lr)
 
         progress = float(current_step - num_warmup_steps - num_wait_steps) / \
             float(max(1, num_training_steps - num_warmup_steps - num_wait_steps))
-        cosine_decay = 0.5 * \
-            (1.0 + math.cos(math.pi * float(num_cycles) * 2.0 * progress))
-        decayed_lr = (initial_lr - final_lr) * cosine_decay + final_lr
-        return decayed_lr
+        return max(final_lr, initial_lr + (0.5 * (1.0 + math.cos(math.pi * float(num_cycles) * 2.0 * progress))) * (final_lr - initial_lr))
 
     return LambdaLR(optimizer, lr_lambda, last_epoch)
 
