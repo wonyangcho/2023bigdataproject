@@ -301,24 +301,18 @@ def main():
     # s_optimizer = optim.Adam(student_model.parameters(),
     #                          lr=args.student_lr)
 
-    # t_scheduler = torch.optim.lr_scheduler.MultiStepLR(
-    #     t_optimizer, milestones=[300], gamma=0.1, last_epoch=-1)
+    t_scheduler = torch.optim.lr_scheduler.StepLR(
+        t_optimizer, step_size=10000, gamma=0.1)
+    s_scheduler = torch.optim.lr_scheduler.StepLR(
+        s_optimizer, step_size=10000, gamma=0.1)
 
-    # s_scheduler = torch.optim.lr_scheduler.MultiStepLR(
-    #     t_optimizer, milestones=[300], gamma=0.1, last_epoch=-1)
-
-    # t_scheduler = torch.optim.lr_scheduler.StepLR(
-    #     t_optimizer, step_size=10000, gamma=0.1)
-    # s_scheduler = torch.optim.lr_scheduler.StepLR(
-    #     s_optimizer, step_size=10000, gamma=0.1)
-
-    t_scheduler = get_cosine_schedule_with_warmup(t_optimizer,
-                                                  args.warmup_steps,
-                                                  args.total_steps)
-    s_scheduler = get_cosine_schedule_with_warmup(s_optimizer,
-                                                  args.warmup_steps,
-                                                  args.total_steps,
-                                                  args.student_wait_steps,)
+    # t_scheduler = get_cosine_schedule_with_warmup(t_optimizer,
+    #                                               args.warmup_steps,
+    #                                               args.total_steps)
+    # s_scheduler = get_cosine_schedule_with_warmup(s_optimizer,
+    #                                               args.warmup_steps,
+    #                                               args.total_steps,
+    #                                               args.student_wait_steps,)
 
     if args.finetune:
         del t_scaler, t_scheduler, t_optimizer, teacher_model, unlabeled_loader
