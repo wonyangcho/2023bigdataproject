@@ -1,3 +1,16 @@
+from utils import (AverageMeter, accuracy, create_loss_fn,
+                   save_checkpoint, reduce_tensor, model_load_state_dict)
+from models import WideResNet, ModelEMA
+from data import DATASET_GETTERS
+from tqdm import tqdm
+from torch.utils.tensorboard import SummaryWriter
+from torch.utils.data.distributed import DistributedSampler
+from torch.utils.data import DataLoader, RandomSampler, SequentialSampler
+from torch.optim.lr_scheduler import LambdaLR
+from torch import optim
+from torch.nn import functional as F
+from torch import nn
+from torch.cuda import amp
 import argparse
 import logging
 import math
@@ -7,21 +20,9 @@ import time
 
 import numpy as np
 import torch
-from torch.cuda import amp
-from torch import nn
-from torch.nn import functional as F
-from torch import optim
-from torch.optim.lr_scheduler import LambdaLR
-from torch.utils.data import DataLoader, RandomSampler, SequentialSampler
-from torch.utils.data.distributed import DistributedSampler
-from torch.utils.tensorboard import SummaryWriter
+torch.autograd.set_detect_anomaly(True)
 # import wandb
-from tqdm import tqdm
 
-from data import DATASET_GETTERS
-from models import WideResNet, ModelEMA
-from utils import (AverageMeter, accuracy, create_loss_fn,
-                   save_checkpoint, reduce_tensor, model_load_state_dict)
 
 logger = logging.getLogger(__name__)
 
@@ -235,6 +236,8 @@ def train_loop(args, labeled_loader, unlabeled_loader, test_loader, finetune_dat
 
             s_loss_l_old = F.cross_entropy(s_logits_l.detach(), targets)
             s_loss = criterion(s_logits_us, hard_pseudo_label)
+
+            print(f"{s_loss_l_old} {s_loss}")
 
         s_scaler.scale(s_loss).backward()
         if args.grad_clip > 0:

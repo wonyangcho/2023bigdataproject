@@ -22,7 +22,7 @@ import time
 
 import numpy as np
 import torch
-torch.autograd.set_detect_anomaly(True)
+# torch.autograd.set_detect_anomaly(True)
 
 
 logger = logging.getLogger(__name__)
@@ -134,6 +134,26 @@ def set_seed(args):
     torch.cuda.manual_seed_all(args.seed)
 
 
+def get_cosine_schedule_with_warmup(optimizer,
+                                    num_warmup_steps,
+                                    num_training_steps,
+                                    num_wait_steps=0,
+                                    num_cycles=0.5,
+                                    last_epoch=-1):
+    def lr_lambda(current_step):
+        if current_step < num_wait_steps:
+            return 0.0
+
+        if current_step < num_warmup_steps + num_wait_steps:
+            return float(current_step) / float(max(1, num_warmup_steps + num_wait_steps))
+
+        progress = float(current_step - num_warmup_steps - num_wait_steps) / \
+            float(max(1, num_training_steps - num_warmup_steps - num_wait_steps))
+        return max(0.0, 0.5 * (1.0 + math.cos(math.pi * float(num_cycles) * 2.0 * progress)))
+
+    return LambdaLR(optimizer, lr_lambda, last_epoch)
+
+
 def main():
     args = parser.parse_args()
 
@@ -204,6 +224,43 @@ def main():
     teacher_model = base_patch16_384_token(pretrained=True)
     student_model = base_patch16_384_token(pretrained=True)
 
+    t_scaler = amp.GradScaler(enabled=args.amp)
+    s_scaler = amp.GradScaler(enabled=args.amp)
+
+    if args.resume:
+        if os.path.isfile(args.resume):
+            logger.info(f"=> loading checkpoint '{args.resume}'")
+            loc = f'cuda:{args.gpu}'
+            checkpoint = torch.load(args.resume, map_location=loc)
+            args.best_loss = checkpoint['best_loss'].to(torch.device('cpu'))
+
+            if not (args.evaluate or args.finetune):
+                args.start_step = checkpoint['step']
+                t_optimizer.load_state_dict(checkpoint['teacher_optimizer'])
+                s_optimizer.load_state_dict(checkpoint['student_optimizer'])
+                t_scheduler.load_state_dict(checkpoint['teacher_scheduler'])
+                s_scheduler.load_state_dict(checkpoint['student_scheduler'])
+                t_scaler.load_state_dict(checkpoint['teacher_scaler'])
+                s_scaler.load_state_dict(checkpoint['student_scaler'])
+                model_load_state_dict(
+                    teacher_model, checkpoint['teacher_state_dict'])
+                # if avg_student_model is not None:
+                #     model_load_state_dict(
+                #         avg_student_model, checkpoint['avg_state_dict'])
+
+            else:
+                if checkpoint['avg_state_dict'] is not None:
+                    model_load_state_dict(
+                        student_model, checkpoint['avg_state_dict'])
+                else:
+                    model_load_state_dict(
+                        student_model, checkpoint['student_state_dict'])
+
+            logger.info(
+                f"=> loaded checkpoint '{args.resume}' (step {checkpoint['step']})")
+        else:
+            logger.info(f"=> no checkpoint found at '{args.resume}'")
+
     if args.local_rank != -1:
         teacher_model = nn.parallel.DistributedDataParallel(
             teacher_model, device_ids=[args.local_rank],
@@ -217,34 +274,74 @@ def main():
 
     criterion = nn.L1Loss(size_average=False).cuda()
 
-    t_optimizer = torch.optim.Adam(
-        [  #
-            {'params': teacher_model.parameters(), 'lr': args.teacher_lr},
-        ], lr=args.teacher_lr, weight_decay=args.weight_decay)
+    # t_optimizer = torch.optim.Adam(
+    #     [  #
+    #         {'params': teacher_model.parameters(), 'lr': args.teacher_lr},
+    #     ], lr=args.teacher_lr, weight_decay=args.weight_decay)
 
-    s_optimizer = torch.optim.Adam(
-        [  #
-            {'params': teacher_model.parameters(), 'lr': args.teacher_lr},
-        ], lr=args.teacher_lr, weight_decay=args.weight_decay)
+    # s_optimizer = torch.optim.Adam(
+    #     [  #
+    #         {'params': teacher_model.parameters(), 'lr': args.student_lr},
+    #     ], lr=args.student_lr, weight_decay=args.weight_decay)
 
-    t_scheduler = torch.optim.lr_scheduler.MultiStepLR(
-        t_optimizer, milestones=[300], gamma=0.1, last_epoch=-1)
+    # t_optimizer = optim.SGD(teacher_model.parameters(),
+    #                         lr=args.teacher_lr,
+    #                         momentum=args.momentum,
+    #                         nesterov=args.nesterov)
+    # s_optimizer = optim.SGD(student_model.parameters(),
+    #                         lr=args.student_lr,
+    #                         momentum=args.momentum,
+    #                         nesterov=args.nesterov)
 
-    s_scheduler = torch.optim.lr_scheduler.MultiStepLR(
-        t_optimizer, milestones=[300], gamma=0.1, last_epoch=-1)
+    t_optimizer = optim.Adam(teacher_model.parameters(),
+                             lr=args.teacher_lr)
+    s_optimizer = optim.Adam(student_model.parameters(),
+                             lr=args.student_lr)
 
-    train(args, labeled_loader, unlabeled_loader, test_loader,
+    # t_scheduler = torch.optim.lr_scheduler.MultiStepLR(
+    #     t_optimizer, milestones=[300], gamma=0.1, last_epoch=-1)
+
+    # s_scheduler = torch.optim.lr_scheduler.MultiStepLR(
+    #     t_optimizer, milestones=[300], gamma=0.1, last_epoch=-1)
+
+    t_scheduler = get_cosine_schedule_with_warmup(t_optimizer,
+                                                  args.warmup_steps,
+                                                  args.total_steps)
+    s_scheduler = get_cosine_schedule_with_warmup(s_optimizer,
+                                                  args.warmup_steps,
+                                                  args.total_steps,
+                                                  args.student_wait_steps)
+
+    if args.finetune:
+        del t_scaler, t_scheduler, t_optimizer, teacher_model, unlabeled_loader
+        del s_scaler, s_scheduler, s_optimizer
+        finetune(args, finetune_dataset, test_loader, student_model, criterion)
+        return
+
+    if args.evaluate:
+        del t_scaler, t_scheduler, t_optimizer, teacher_model, unlabeled_loader, labeled_loader
+        del s_scaler, s_scheduler, s_optimizer
+        validate(test_loader, student_model, args)
+        return
+
+    teacher_model = teacher_model.to(args.device)
+    student_model = student_model.to(args.device)
+
+    teacher_model.zero_grad()
+    student_model.zero_grad()
+
+    train(args, labeled_loader, unlabeled_loader, test_loader, finetune_dataset,
           teacher_model, student_model,
-          t_optimizer, s_optimizer, t_scheduler, s_scheduler, criterion)
+          t_optimizer, s_optimizer, t_scheduler, s_scheduler, t_scaler, s_scaler, criterion)
 
 
 def get_lr(optimizer):
     return optimizer.param_groups[0]['lr']
 
 
-def train(args, labeled_loader, unlabeled_loader, test_loader,
+def train(args, labeled_loader, unlabeled_loader, test_loader, finetune_dataset,
           teacher_model, student_model,
-          t_optimizer, s_optimizer, t_scheduler, s_scheduler, criterion):
+          t_optimizer, s_optimizer, t_scheduler, s_scheduler, t_scaler, s_scaler, criterion):
 
     if args.world_size > 1:
         labeled_epoch = 0
@@ -253,6 +350,9 @@ def train(args, labeled_loader, unlabeled_loader, test_loader,
         unlabeled_loader.sampler.set_epoch(unlabeled_epoch)
 
     for step in range(args.start_step, args.total_steps):
+
+        t_optimizer.zero_grad()
+        s_optimizer.zero_grad()
 
         if step % args.eval_step == 0:
             pbar = tqdm(range(args.eval_step),
@@ -307,8 +407,17 @@ def train(args, labeled_loader, unlabeled_loader, test_loader,
             s_loss_l_old = criterion(s_logits_l.detach(), targets)
             s_loss = criterion(s_logits_us, t_logits_uw.detach())
 
-        s_loss.backward()
-        s_optimizer.step()
+        # s_loss.backward()
+        # s_optimizer.step()
+
+        s_scaler.scale(s_loss).backward()
+        if args.grad_clip > 0:
+            s_scaler.unscale_(s_optimizer)
+            nn.utils.clip_grad_norm_(
+                student_model.parameters(), args.grad_clip)
+        s_scaler.step(s_optimizer)
+        s_scaler.update()
+        s_scheduler.step()
 
         with amp.autocast(enabled=args.amp):
             with torch.no_grad():
@@ -321,14 +430,21 @@ def train(args, labeled_loader, unlabeled_loader, test_loader,
                 criterion(t_logits_us, t_logits_uw.detach())
             t_loss = t_loss_uda + t_loss_mpl
 
-        t_loss.backward()
-        t_optimizer.step()
+        # t_loss.backward()
+        # t_optimizer.step()
 
+        # t_scheduler.step()
+        # s_scheduler.step()
+
+        t_scaler.scale(t_loss).backward()
+        if args.grad_clip > 0:
+            t_scaler.unscale_(t_optimizer)
+            nn.utils.clip_grad_norm_(
+                teacher_model.parameters(), args.grad_clip)
+
+        t_scaler.step(t_optimizer)
+        t_scaler.update()
         t_scheduler.step()
-        s_scheduler.step()
-
-        t_optimizer.zero_grad()
-        s_optimizer.zero_grad()
 
         if args.world_size > 1:
             s_loss = reduce_tensor(s_loss.detach(), args.world_size)
@@ -381,8 +497,8 @@ def train(args, labeled_loader, unlabeled_loader, test_loader,
                     'student_optimizer': s_optimizer.state_dict(),
                     'teacher_scheduler': t_scheduler.state_dict(),
                     'student_scheduler': s_scheduler.state_dict(),
-                    # 'teacher_scaler': t_scaler.state_dict(),
-                    # 'student_scaler': s_scaler.state_dict(),
+                    'teacher_scaler': t_scaler.state_dict(),
+                    'student_scaler': s_scaler.state_dict(),
                 }, is_best)
 
                 web_logger.log(args,
@@ -395,6 +511,23 @@ def train(args, labeled_loader, unlabeled_loader, test_loader,
                                {"train/4.t_unlabeled": t_losses_u.avg})
                 web_logger.log(args,
                                {"train/5.t_mpl": t_losses_mpl.avg})
+    if args.local_rank in [-1, 0]:
+        args.writer.add_scalar("result/test_loss", args.best_loss)
+        web_logger.log(args, {"result/test_loss": args.best_loss})
+#         wandb.log({"result/test_acc@1": args.best_top1})
+
+    # finetune
+    del t_scaler, t_scheduler, t_optimizer, teacher_model, labeled_loader, unlabeled_loader
+    del s_scaler, s_scheduler, s_optimizer
+    ckpt_name = f'{args.save_path}/{args.name}_best.pth.tar'
+    loc = f'cuda:{args.gpu}'
+    checkpoint = torch.load(ckpt_name, map_location=loc)
+    logger.info(f"=> loading checkpoint '{ckpt_name}'")
+    if checkpoint['avg_state_dict'] is not None:
+        model_load_state_dict(student_model, checkpoint['avg_state_dict'])
+    else:
+        model_load_state_dict(student_model, checkpoint['student_state_dict'])
+    finetune(args, finetune_dataset, test_loader, student_model, criterion)
 
 
 def validate(data_loader, model, args):
@@ -426,14 +559,12 @@ def validate(data_loader, model, args):
         mse += abs(gt_count - count) * abs(gt_count - count)
 
         if i % 15 == 0:
-            print('Gt {gt:.2f} Pred {pred}'.format(
-                gt=gt_count, pred=count))
+            logger.info(f"Gt {gt_count:.2f} Pred {count}")
 
     mae = mae * 1.0 / (len(test_loader) * batch_size)
     mse = math.sqrt(mse / (len(test_loader)) * batch_size)
 
-    print(' \n* MAE {mae:.3f}\n'.format(mae=mae),
-          '* MSE {mse:.3f}'.format(mse=mse))
+    logger.info(f" \n* MAE {mae:.3f}\n * MSE {mse:.3f}")
 
     web_logger.log(args,
                    {"test/MAE": mae})
@@ -441,6 +572,95 @@ def validate(data_loader, model, args):
                    {"test/MSE": mse})
 
     return mae
+
+
+def finetune(args, finetune_dataset, test_loader, model, criterion):
+    model.drop = nn.Identity()
+    train_sampler = RandomSampler if args.local_rank == -1 else DistributedSampler
+    labeled_loader = DataLoader(
+        finetune_dataset,
+        batch_size=args.finetune_batch_size,
+        num_workers=args.workers,
+        pin_memory=True)
+
+    optimizer = torch.optim.Adam(model.parameters(), lr=args.finetune_lr)
+
+    # optimizer = optim.SGD(model.parameters(),
+    #                       lr=args.finetune_lr,
+    #                       momentum=args.finetune_momentum,
+    #                       weight_decay=args.finetune_weight_decay,
+    #                       nesterov=True)
+
+    scaler = amp.GradScaler(enabled=args.amp)
+
+    logger.info("***** Running Finetuning *****")
+    logger.info(
+        f"   Finetuning steps = {len(labeled_loader)*args.finetune_epochs}")
+
+    for epoch in range(args.finetune_epochs):
+        if args.world_size > 1:
+            labeled_loader.sampler.set_epoch(epoch + 624)
+
+        batch_time = AverageMeter()
+        data_time = AverageMeter()
+        losses = AverageMeter()
+        model.train()
+        end = time.time()
+        labeled_iter = tqdm(
+            labeled_loader, disable=args.local_rank not in [-1, 0])
+        for step, (images, targets) in enumerate(labeled_iter):
+
+            images = images.float()
+            targets = targets.float()
+
+            data_time.update(time.time() - end)
+            batch_size = images.shape[0]
+            images = images.to(args.device)
+            targets = targets.to(args.device)
+            with amp.autocast(enabled=args.amp):
+                model.zero_grad()
+                outputs = model(images)
+                loss = criterion(outputs, targets)
+
+            scaler.scale(loss).backward()
+            scaler.step(optimizer)
+            scaler.update()
+
+            if args.world_size > 1:
+                loss = reduce_tensor(loss.detach(), args.world_size)
+            losses.update(loss.item(), batch_size)
+            batch_time.update(time.time() - end)
+            labeled_iter.set_description(
+                f"Finetune Epoch: {epoch+1:2}/{args.finetune_epochs:2}. Data: {data_time.avg:.2f}s. "
+                f"Batch: {batch_time.avg:.2f}s. Loss: {losses.avg:.4f}. ")
+        labeled_iter.close()
+        if args.local_rank in [-1, 0]:
+            args.writer.add_scalar("finetune/train_loss", losses.avg, epoch)
+
+            test_loss = validate(test_loader, model, args)
+
+            web_logger.log(args, {"finetune/train_loss": losses.avg})
+            web_logger.log(args, {"finetune/test_loss": test_loss})
+
+            is_best = test_loss < args.best_loss
+            if is_best:
+                args.best_loss = test_loss
+
+            logger.info(f"loss: {test_loss:.2f}")
+            logger.info(f"best_loss: {args.best_loss:.2f}")
+
+            save_checkpoint(args, {
+                'step': step + 1,
+                'best_loss': args.best_loss,
+                'student_state_dict': model.state_dict(),
+                'avg_state_dict': None,
+                'student_optimizer': optimizer.state_dict(),
+            }, is_best, finetune=True)
+        if args.local_rank in [-1, 0]:
+            args.writer.add_scalar("result/finetune_loss", args.best_loss)
+            web_logger.log(args, {"result/finetune_loss": args.best_loss})
+#             wandb.log({"result/finetune_acc@1": args.best_top1})
+    return
 
 
 class AverageMeter(object):

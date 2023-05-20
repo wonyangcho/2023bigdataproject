@@ -33,4 +33,4 @@ python main.py \
     --test_l_data "/npydata/ShanghaiA_test.npy" \
     --description "1st" \
     --amp \
-    # --use_wandb \
+    --use_wandb \
