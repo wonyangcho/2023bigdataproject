@@ -9,8 +9,8 @@ python main.py \
     --eval_step 1000 \
     --randaug 2 16 \
     --batch_size 4 \
-    --teacher_lr 1e-4 \
-    --student_lr 1e-4 \
+    --teacher_lr 0.05\
+    --student_lr 0.05 \
     --weight_decay 5e-4 \
     --nesterov \
     --mu 1 \
@@ -23,7 +23,7 @@ python main.py \
     --teacher_dropout 0.2 \
     --student_dropout 0.2 \
     --finetune_epochs 250 \
-    --finetune_batch_size 2 \
+    --finetune_batch_size 4 \
     --finetune_lr 3e-5 \
     --finetune_weight_decay 0 \
     --finetune_momentum 0.9 \
