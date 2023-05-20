@@ -57,7 +57,11 @@ parser.add_argument('--student_dropout', default=0,
                     type=float, help='dropout on last dense layer')
 parser.add_argument('--teacher_lr', default=0.01,
                     type=float, help='train learning late')
+parser.add_argument('--teacher_initial_lr', default=0.01,
+                    type=float, help='train learning late')
 parser.add_argument('--student_lr', default=0.01,
+                    type=float, help='train learning late')
+parser.add_argument('--student_initial_lr', default=0.01,
                     type=float, help='train learning late')
 parser.add_argument('--momentum', default=0.9, type=float, help='SGD Momentum')
 parser.add_argument('--nesterov', action='store_true', help='use nesterov')
@@ -107,7 +111,7 @@ parser.add_argument("--amp", action="store_true",
                     help="use 16-bit (mixed) precision")
 parser.add_argument('--world_size', default=-1, type=int,
                     help='number of nodes for distributed training')
-parser.add_argument("--local_rank", type=int, default=-1,
+parser.add_argument("--local-rank", type=int, default=-1,
                     help="For distributed training: local_rank")
 
 
@@ -137,6 +141,8 @@ def set_seed(args):
 def get_cosine_schedule_with_warmup(optimizer,
                                     num_warmup_steps,
                                     num_training_steps,
+                                    initial_lr,
+                                    final_lr,
                                     num_wait_steps=0,
                                     num_cycles=0.5,
                                     last_epoch=-1):
@@ -145,11 +151,14 @@ def get_cosine_schedule_with_warmup(optimizer,
             return 0.0
 
         if current_step < num_warmup_steps + num_wait_steps:
-            return float(current_step) / float(max(1, num_warmup_steps + num_wait_steps))
+            return initial_lr + (current_step / max(1, num_warmup_steps + num_wait_steps)) * (final_lr - initial_lr)
 
         progress = float(current_step - num_warmup_steps - num_wait_steps) / \
             float(max(1, num_training_steps - num_warmup_steps - num_wait_steps))
-        return max(0.0, 0.5 * (1.0 + math.cos(math.pi * float(num_cycles) * 2.0 * progress)))
+        cosine_decay = 0.5 * \
+            (1.0 + math.cos(math.pi * float(num_cycles) * 2.0 * progress))
+        decayed_lr = (initial_lr - final_lr) * cosine_decay + final_lr
+        return decayed_lr
 
     return LambdaLR(optimizer, lr_lambda, last_epoch)
 
@@ -224,6 +233,9 @@ def main():
     teacher_model = base_patch16_384_token(pretrained=True)
     student_model = base_patch16_384_token(pretrained=True)
 
+    teacher_model.to(args.device)
+    student_model.to(args.device)
+
     t_scaler = amp.GradScaler(enabled=args.amp)
     s_scaler = amp.GradScaler(enabled=args.amp)
 
@@ -284,38 +296,42 @@ def main():
     #         {'params': teacher_model.parameters(), 'lr': args.student_lr},
     #     ], lr=args.student_lr, weight_decay=args.weight_decay)
 
-    # t_optimizer = optim.SGD(teacher_model.parameters(),
-    #                         lr=args.teacher_lr,
-    #                         momentum=args.momentum,
-    #                         nesterov=args.nesterov)
-    # s_optimizer = optim.SGD(student_model.parameters(),
-    #                         lr=args.student_lr,
-    #                         momentum=args.momentum,
-    #                         nesterov=args.nesterov)
+    t_optimizer = optim.SGD(teacher_model.parameters(),
+                            lr=args.teacher_lr,
+                            momentum=args.momentum,
+                            nesterov=args.nesterov)
+    s_optimizer = optim.SGD(student_model.parameters(),
+                            lr=args.student_lr,
+                            momentum=args.momentum,
+                            nesterov=args.nesterov)
 
-    t_optimizer = optim.Adam(teacher_model.parameters(),
-                             lr=args.teacher_lr)
-    s_optimizer = optim.Adam(student_model.parameters(),
-                             lr=args.student_lr)
+    # t_optimizer = optim.Adam(teacher_model.parameters(),
+    #                          lr=args.teacher_lr)
+    # s_optimizer = optim.Adam(student_model.parameters(),
+    #                          lr=args.student_lr)
 
-    t_scheduler = torch.optim.lr_scheduler.MultiStepLR(
-        t_optimizer, milestones=[300], gamma=0.1, last_epoch=-1)
+    # t_scheduler = torch.optim.lr_scheduler.MultiStepLR(
+    #     t_optimizer, milestones=[300], gamma=0.1, last_epoch=-1)
 
-    s_scheduler = torch.optim.lr_scheduler.MultiStepLR(
-        t_optimizer, milestones=[300], gamma=0.1, last_epoch=-1)
+    # s_scheduler = torch.optim.lr_scheduler.MultiStepLR(
+    #     t_optimizer, milestones=[300], gamma=0.1, last_epoch=-1)
 
     # t_scheduler = torch.optim.lr_scheduler.StepLR(
     #     t_optimizer, step_size=10000, gamma=0.1)
     # s_scheduler = torch.optim.lr_scheduler.StepLR(
     #     s_optimizer, step_size=10000, gamma=0.1)
 
-    # t_scheduler = get_cosine_schedule_with_warmup(t_optimizer,
-    #                                               args.warmup_steps,
-    #                                               args.total_steps)
-    # s_scheduler = get_cosine_schedule_with_warmup(s_optimizer,
-    #                                               args.warmup_steps,
-    #                                               args.total_steps,
-    #                                               args.student_wait_steps)
+    t_scheduler = get_cosine_schedule_with_warmup(t_optimizer,
+                                                  args.warmup_steps,
+                                                  args.total_steps,
+                                                  args.teacher_initial_lr,
+                                                  args.teacher_lr)
+    s_scheduler = get_cosine_schedule_with_warmup(s_optimizer,
+                                                  args.warmup_steps,
+                                                  args.total_steps,
+                                                  args.student_initial_lr,
+                                                  args.student_lr,
+                                                  args.student_wait_steps,)
 
     if args.finetune:
         del t_scaler, t_scheduler, t_optimizer, teacher_model, unlabeled_loader
@@ -588,13 +604,13 @@ def finetune(args, finetune_dataset, test_loader, model, criterion):
         num_workers=args.workers,
         pin_memory=True)
 
-    optimizer = torch.optim.Adam(model.parameters(), lr=args.finetune_lr)
+    # optimizer = torch.optim.Adam(model.parameters(), lr=args.finetune_lr)
 
-    # optimizer = optim.SGD(model.parameters(),
-    #                       lr=args.finetune_lr,
-    #                       momentum=args.finetune_momentum,
-    #                       weight_decay=args.finetune_weight_decay,
-    #                       nesterov=True)
+    optimizer = optim.SGD(model.parameters(),
+                          lr=args.finetune_lr,
+                          momentum=args.finetune_momentum,
+                          weight_decay=args.finetune_weight_decay,
+                          nesterov=True)
 
     scaler = amp.GradScaler(enabled=args.amp)
 

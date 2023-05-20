@@ -1,15 +1,17 @@
-#python -m torch.distributed.launch --nproc_per_node 1 
+#python -m torch.distributed.launch --nproc_per_node 2 
 python main.py \
     --seed 2 \
     --name crowd \
     --dataset crowd \
     --num_labeled 10000 \
     --expand_labels \
-    --total_steps 300000 \
+    --total_steps 100000 \
     --eval_step 1000 \
     --randaug 2 16 \
     --batch_size 4 \
+    --teacher_initial_lr 1e-2\
     --teacher_lr 1e-5\
+    --student_initial_lr 1e-2\
     --student_lr 1e-5 \
     --weight_decay 5e-4 \
     --nesterov \
@@ -17,9 +19,9 @@ python main.py \
     --temperature 0.7 \
     --threshold 0.6 \
     --lambda_u 8 \
-    --warmup_steps 5000 \
+    --warmup_steps 0 \
     --uda_steps 5000 \
-    --student_wait_steps 3000 \
+    --student_wait_steps 1000 \
     --teacher_dropout 0.2 \
     --student_dropout 0.2 \
     --finetune_epochs 250 \
