@@ -274,15 +274,15 @@ def main():
 
     criterion = nn.L1Loss(size_average=False).cuda()
 
-    t_optimizer = torch.optim.Adam(
-        [  #
-            {'params': teacher_model.parameters(), 'lr': args.teacher_lr},
-        ], lr=args.teacher_lr, weight_decay=args.weight_decay)
+    # t_optimizer = torch.optim.Adam(
+    #     [  #
+    #         {'params': teacher_model.parameters(), 'lr': args.teacher_lr},
+    #     ], lr=args.teacher_lr, weight_decay=args.weight_decay)
 
-    s_optimizer = torch.optim.Adam(
-        [  #
-            {'params': teacher_model.parameters(), 'lr': args.student_lr},
-        ], lr=args.student_lr, weight_decay=args.weight_decay)
+    # s_optimizer = torch.optim.Adam(
+    #     [  #
+    #         {'params': teacher_model.parameters(), 'lr': args.student_lr},
+    #     ], lr=args.student_lr, weight_decay=args.weight_decay)
 
     # t_optimizer = optim.SGD(teacher_model.parameters(),
     #                         lr=args.teacher_lr,
@@ -292,6 +292,11 @@ def main():
     #                         lr=args.student_lr,
     #                         momentum=args.momentum,
     #                         nesterov=args.nesterov)
+
+    t_optimizer = optim.Adam(teacher_model.parameters(),
+                             lr=args.teacher_lr)
+    s_optimizer = optim.Adam(student_model.parameters(),
+                             lr=args.student_lr)
 
     # t_scheduler = torch.optim.lr_scheduler.MultiStepLR(
     #     t_optimizer, milestones=[300], gamma=0.1, last_epoch=-1)
