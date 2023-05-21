@@ -1,5 +1,5 @@
 #python -m torch.distributed.launch --nproc_per_node 2 
-python main.py \
+CUDA_VISIBLE_DEVICES=1 python main.py \
     --seed 2 \
     --name crowd \
     --dataset crowd \
@@ -28,9 +28,14 @@ python main.py \
     --finetune_weight_decay 0 \
     --finetune_momentum 0.9 \
     --home "/work/wycho/2023bigdataproject/src/" \
-    --train_l_data "npydata/ShanghaiA_train.npy" \
-    --train_ul_data "npydata/qnrf_train.npy" \
-    --test_l_data "/npydata/ShanghaiA_test.npy" \
+    --train_ShanghaiA_data "npydata/ShanghaiA_train.npy" \
+    --train_ShanghaiB_data "npydata/ShanghaiB_train.npy" \
+    --test_ShanghaiA_data "npydata/ShanghaiA_test.npy" \
+    --test_ShanghaiB_data "npydata/ShanghaiB_test.npy" \
+    --train_qnrf_data "npydata/qnrf_train.npy" \
+    --test_qnrf_data "npydata/qnrf_train.npy" \
     --description "1st" \
-    --amp \
     --use_wandb \
+    --do_crop \
+    --amp \
+    

@@ -268,14 +268,28 @@ class CIFAR100SSL(datasets.CIFAR100):
 
 def load_data(img_path, args, train=True):
 
-    gt_path = img_path.replace('.jpg', '.h5').replace(
-        'images', 'gt_density_map')
+    if train:
+        if args.do_crop:
+            gt_path = img_path.replace('.jpg', '.h5kp').replace(
+                'images', 'gt_density_map')
+        else:
+            gt_path = img_path.replace('.jpg', '.h5').replace(
+                'images', 'gt_density_map')
+    else:
+        gt_path = img_path.replace('.jpg', '.h5').replace(
+            'images', 'gt_density_map')
+
     img = Image.open(img_path).convert('RGB')
 
     while True:
         try:
             gt_file = h5py.File(gt_path)
-            gt_count = np.asarray(gt_file['gt_count'])
+
+            if train and args.do_crop:
+                gt_count = np.asarray(gt_file['kpoint'])
+            else:
+                gt_count = np.asarray(gt_file['gt_count'])
+
             break  # Success!
         except OSError:
             print("load error:", img_path)
@@ -296,12 +310,34 @@ def pre_data(train_list, args, train):
         fname = os.path.basename(Img_path)
         img, gt_count = load_data(Img_path, args, train)
 
-        blob = {}
-        blob['img'] = img
-        blob['gt_count'] = gt_count
-        blob['fname'] = fname
-        data_keys[count] = blob
-        count += 1
+        if train and args.do_crop:
+            width, height = img.size[0], img.size[1]
+
+            m = int(width / 384)
+            n = int(height / 384)
+
+            for i in range(0, m):
+                for j in range(0, n):
+                    crop_img = img.crop(
+                        (i * 384, j * 384, (i + 1) * 384, (j + 1) * 384))
+                    crop_kpoint = gt_count[j *
+                                           384: (j + 1) * 384, i * 384: (i + 1) * 384]
+                    gt_count_crop = np.sum(crop_kpoint)
+
+                    blob = {}
+                    blob['img'] = crop_img
+                    blob['gt_count'] = gt_count_crop
+                    blob['fname'] = fname
+                    data_keys[count] = blob
+                    count += 1
+
+        else:
+            blob = {}
+            blob['img'] = img
+            blob['gt_count'] = gt_count
+            blob['fname'] = fname
+            data_keys[count] = blob
+            count += 1
 
         '''for debug'''
         # if j> 10:
@@ -313,18 +349,44 @@ def get_crowd(args):
 
     # 일단 finetune도 train dataset을 이용하도록 하자. wycho
 
-    train_l_list = None
-    train_ul_list = None
-    test_l_list = None
+    train_l_list = []
+    train_ul_list = []
+    test_l_list = []
 
-    with open(args.home+args.train_l_data, 'rb') as outfile:
-        train_l_list = np.load(outfile).tolist()
+    train_dataset_paths = [args.train_ShanghaiA_data,
+                           args.train_ShanghaiB_data, args.train_qnrf_data]
 
-    with open(args.home+args.train_ul_data, 'rb') as outfile:
-        train_ul_list = np.load(outfile).tolist()
+    test_dataset_paths = [args.test_ShanghaiA_data,
+                          args.test_ShanghaiB_data, args.test_qnrf_data]
 
-    with open(args.home+args.test_l_data, 'rb') as outfile:
-        test_l_list = np.load(outfile).tolist()
+    train_labeled_nums = [90, 120, 480]
+    train_unlabeled_nums = [210, 280, 721]
+    test_labeled_nums = [60, 80, 240]
+
+    for i, data_path in enumerate(train_dataset_paths):
+
+        with open(args.home+data_path, 'rb') as outfile:
+            train_list = np.load(outfile).tolist()
+            np.random.shuffle(train_list)
+
+            labeled_list = train_list[:train_labeled_nums[i]]
+            unlabeled_list = train_list[train_labeled_nums[i]:train_labeled_nums[i]+train_unlabeled_nums[i]]
+
+            train_l_list.extend(labeled_list)
+            train_ul_list.extend(unlabeled_list)
+
+    for i, data_path in enumerate(test_dataset_paths):
+
+        with open(args.home+data_path, 'rb') as outfile:
+            test_list = np.load(outfile).tolist()
+            np.random.shuffle(train_list)
+
+            test_list = train_list[:test_labeled_nums[i]]
+
+            test_l_list.extend(test_list)
+
+    print(
+        f"===== labeled: {len(train_l_list)} unlabeled:{len(train_ul_list)} test:{len(test_l_list)}")
 
     train_l_data = pre_data(train_l_list, args, train=True)
     train_ul_data = pre_data(train_ul_list, args, train=True)

@@ -112,12 +112,19 @@ parser.add_argument("--local-rank", type=int, default=-1,
 
 
 parser.add_argument('--home', default="", type=str, help='home path')
-parser.add_argument('--train_l_data', default="", type=str,
-                    help='labeld data file full path')
-parser.add_argument('--train_ul_data', default="", type=str,
-                    help='unlabeld data file full path')
-parser.add_argument('--test_l_data', default="", type=str,
-                    help='test data file full path')
+parser.add_argument('--train_ShanghaiA_data', default="", type=str,
+                    help='train_ShanghaiA_data')
+parser.add_argument('--train_ShanghaiB_data', default="", type=str,
+                    help='train_ShanghaiB_data')
+parser.add_argument('--test_ShanghaiA_data', default="", type=str,
+                    help='train_ShanghaiA_data')
+parser.add_argument('--test_ShanghaiB_data', default="", type=str,
+                    help='train_ShanghaiB_data')
+parser.add_argument('--train_qnrf_data', default="", type=str,
+                    help='train_qnrf_data')
+parser.add_argument('--test_qnrf_data', default="", type=str,
+                    help='test_qnrf_data')
+
 
 # wandb
 parser.add_argument("--use_wandb",  action="store_true", help="use wandb")
@@ -125,6 +132,13 @@ parser.add_argument(
     "--project_name",  default='2023BigDataProject', type=str, help='project name')
 parser.add_argument("--description",  default='initial test',
                     type=str, help='experiment description')
+
+
+parser.add_argument("--do_crop", action="store_true",
+                    help="crop for transformer")
+
+parser.add_argument("--use_lr_scheduler", action="store_true",
+                    help="use lr scheduler")
 
 
 def set_seed(args):
@@ -287,24 +301,28 @@ def main():
     #         {'params': teacher_model.parameters(), 'lr': args.student_lr},
     #     ], lr=args.student_lr, weight_decay=args.weight_decay)
 
-    t_optimizer = optim.SGD(teacher_model.parameters(),
-                            lr=args.teacher_lr,
-                            momentum=args.momentum,
-                            nesterov=args.nesterov)
-    s_optimizer = optim.SGD(student_model.parameters(),
-                            lr=args.student_lr,
-                            momentum=args.momentum,
-                            nesterov=args.nesterov)
+    # t_optimizer = optim.SGD(teacher_model.parameters(),
+    #                         lr=args.teacher_lr,
+    #                         momentum=args.momentum,
+    #                         nesterov=args.nesterov)
+    # s_optimizer = optim.SGD(student_model.parameters(),
+    #                         lr=args.student_lr,
+    #                         momentum=args.momentum,
+    #                         nesterov=args.nesterov)
 
-    # t_optimizer = optim.Adam(teacher_model.parameters(),
-    #                          lr=args.teacher_lr)
-    # s_optimizer = optim.Adam(student_model.parameters(),
-    #                          lr=args.student_lr)
+    t_optimizer = optim.Adam(teacher_model.parameters(),
+                             lr=args.teacher_lr)
+    s_optimizer = optim.Adam(student_model.parameters(),
+                             lr=args.student_lr)
 
-    t_scheduler = torch.optim.lr_scheduler.StepLR(
-        t_optimizer, step_size=10000, gamma=0.1)
-    s_scheduler = torch.optim.lr_scheduler.StepLR(
-        s_optimizer, step_size=10000, gamma=0.1)
+    if args.use_lr_scheduler:
+        t_scheduler = torch.optim.lr_scheduler.StepLR(
+            t_optimizer, step_size=10000, gamma=0.1)
+        s_scheduler = torch.optim.lr_scheduler.StepLR(
+            s_optimizer, step_size=10000, gamma=0.1)
+    else:
+        t_scheduler = None
+        s_scheduler = None
 
     # t_scheduler = get_cosine_schedule_with_warmup(t_optimizer,
     #                                               args.warmup_steps,
@@ -315,14 +333,27 @@ def main():
     #                                               args.student_wait_steps,)
 
     if args.finetune:
-        del t_scaler, t_scheduler, t_optimizer, teacher_model, unlabeled_loader
-        del s_scaler, s_scheduler, s_optimizer
+        del t_scaler, t_optimizer, teacher_model, unlabeled_loader
+
+        del s_scaler, s_optimizer
+
+        if t_scheduler is not None:
+            del t_scheduler
+        if s_scheduler is not None:
+            del s_scheduler
+
         finetune(args, finetune_dataset, test_loader, student_model, criterion)
         return
 
     if args.evaluate:
-        del t_scaler, t_scheduler, t_optimizer, teacher_model, unlabeled_loader, labeled_loader
-        del s_scaler, s_scheduler, s_optimizer
+        del t_scaler, t_optimizer, teacher_model, unlabeled_loader, labeled_loader
+        del s_scaler, s_optimizer
+
+        if t_scheduler is not None:
+            del t_scheduler
+        if s_scheduler is not None:
+            del s_scheduler
+
         validate(test_loader, student_model, args)
         return
 
@@ -410,7 +441,6 @@ def train(args, labeled_loader, unlabeled_loader, test_loader, finetune_dataset,
             s_loss = criterion(s_logits_us, t_logits_uw.detach())
 
         # s_loss.backward()
-        # s_optimizer.step()
 
         s_scaler.scale(s_loss).backward()
         if args.grad_clip > 0:
@@ -419,7 +449,9 @@ def train(args, labeled_loader, unlabeled_loader, test_loader, finetune_dataset,
                 student_model.parameters(), args.grad_clip)
         s_scaler.step(s_optimizer)
         s_scaler.update()
-        s_scheduler.step()
+
+        if s_scheduler:
+            s_scheduler.step()
 
         with amp.autocast(enabled=args.amp):
             with torch.no_grad():
@@ -435,9 +467,6 @@ def train(args, labeled_loader, unlabeled_loader, test_loader, finetune_dataset,
         # t_loss.backward()
         # t_optimizer.step()
 
-        # t_scheduler.step()
-        # s_scheduler.step()
-
         t_scaler.scale(t_loss).backward()
         if args.grad_clip > 0:
             t_scaler.unscale_(t_optimizer)
@@ -446,7 +475,9 @@ def train(args, labeled_loader, unlabeled_loader, test_loader, finetune_dataset,
 
         t_scaler.step(t_optimizer)
         t_scaler.update()
-        t_scheduler.step()
+
+        if t_scheduler:
+            t_scheduler.step()
 
         if args.world_size > 1:
             s_loss = reduce_tensor(s_loss.detach(), args.world_size)
@@ -585,13 +616,13 @@ def finetune(args, finetune_dataset, test_loader, model, criterion):
         num_workers=args.workers,
         pin_memory=True)
 
-    # optimizer = torch.optim.Adam(model.parameters(), lr=args.finetune_lr)
+    optimizer = torch.optim.Adam(model.parameters(), lr=args.finetune_lr)
 
-    optimizer = optim.SGD(model.parameters(),
-                          lr=args.finetune_lr,
-                          momentum=args.finetune_momentum,
-                          weight_decay=args.finetune_weight_decay,
-                          nesterov=True)
+    # optimizer = optim.SGD(model.parameters(),
+    #                       lr=args.finetune_lr,
+    #                       momentum=args.finetune_momentum,
+    #                       weight_decay=args.finetune_weight_decay,
+    #                       nesterov=True)
 
     scaler = amp.GradScaler(enabled=args.amp)
 

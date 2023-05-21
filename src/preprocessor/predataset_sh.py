@@ -20,6 +20,8 @@ part_B_test = os.path.join(root, 'part_B_final/test_data', 'images')
 
 path_sets = [part_A_train, part_A_test, part_B_train, part_B_test]
 
+do_crop = False
+
 '''for part A'''
 if not os.path.exists(part_A_train.replace('images', 'gt_density_map_crop')):
     os.makedirs(part_A_train.replace('images', 'gt_density_map_crop'))
@@ -108,25 +110,37 @@ for img_path in img_paths:
     kpoint = kpoint.copy()
     if root_path.split('/')[-3] == 'train_data':
 
-        for i in range(0, m):
-            for j in range(0, n):
-                crop_img = Img_data[j * 384: 384 *
-                                    (j + 1), i * 384:(i + 1) * 384, ]
-                crop_kpoint = kpoint[j * 384: 384 *
-                                     (j + 1), i * 384:(i + 1) * 384]
-                gt_count = np.sum(crop_kpoint)
+        if do_crop:
 
-                save_fname = str(i) + str(j) + str('_') + fname
-                save_path = root_path + save_fname
+            for i in range(0, m):
+                for j in range(0, n):
+                    crop_img = Img_data[j * 384: 384 *
+                                        (j + 1), i * 384:(i + 1) * 384, ]
+                    crop_kpoint = kpoint[j * 384: 384 *
+                                         (j + 1), i * 384:(i + 1) * 384]
+                    gt_count = np.sum(crop_kpoint)
 
-                h5_path = save_path.replace('.jpg', '.h5').replace(
-                    'images', 'gt_density_map')
-                if gt_count == 0:
-                    print(save_path, h5_path)
-                with h5py.File(h5_path, 'w') as hf:
-                    hf['gt_count'] = gt_count
+                    save_fname = str(i) + str(j) + str('_') + fname
+                    save_path = root_path + save_fname
 
-                cv2.imwrite(save_path, crop_img)
+                    h5_path = save_path.replace('.jpg', '.h5').replace(
+                        'images', 'gt_density_map')
+                    if gt_count == 0:
+                        print(save_path, h5_path)
+                    with h5py.File(h5_path, 'w') as hf:
+                        hf['gt_count'] = gt_count
+
+                    cv2.imwrite(save_path, crop_img)
+        else:
+            img_path = img_path.replace('images', 'images_crop')
+
+            cv2.imwrite(img_path, Img_data)
+
+            gt_count = np.sum(kpoint)
+            with h5py.File(img_path.replace('.jpg', '.h5').replace('images', 'gt_density_map'), 'w') as hf:
+                hf['gt_count'] = gt_count
+            with h5py.File(img_path.replace('.jpg', '.h5kp').replace('images', 'gt_density_map'), 'w') as hf:
+                hf['kpoint'] = kpoint
 
     else:
         img_path = img_path.replace('images', 'images_crop')
