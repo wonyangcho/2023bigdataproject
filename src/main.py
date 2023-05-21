@@ -505,6 +505,9 @@ def train(args, labeled_loader, unlabeled_loader, test_loader, finetune_dataset,
             f"Batch: {batch_time.avg:.2f}s. S_Loss: {s_losses.avg:.4f}. "
             f"T_Loss: {t_losses.avg:.4f}.  ")
         pbar.update()
+        if args.local_rank in [-1, 0]:
+            args.writer.add_scalar("lr", get_lr(s_optimizer), step)
+            web_logger.log(args, {"lr": get_lr(s_optimizer)})
 
         # print(
         #     f"Epoch: {step}\t S_Loss {s_losses.avg} T_Loss {t_losses.avg}")
@@ -528,8 +531,8 @@ def train(args, labeled_loader, unlabeled_loader, test_loader, finetune_dataset,
                     'best_loss': args.best_loss,
                     'teacher_optimizer': t_optimizer.state_dict(),
                     'student_optimizer': s_optimizer.state_dict(),
-                    'teacher_scheduler': t_scheduler.state_dict(),
-                    'student_scheduler': s_scheduler.state_dict(),
+                    'teacher_scheduler': t_scheduler.state_dict() if t_scheduler else None,
+                    'student_scheduler': s_scheduler.state_dict() if s_scheduler else None,
                     'teacher_scaler': t_scaler.state_dict(),
                     'student_scaler': s_scaler.state_dict(),
                 }, is_best)
