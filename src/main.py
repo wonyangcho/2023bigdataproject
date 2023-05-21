@@ -244,53 +244,6 @@ def main():
     t_scaler = amp.GradScaler(enabled=args.amp)
     s_scaler = amp.GradScaler(enabled=args.amp)
 
-    if args.resume:
-        if os.path.isfile(args.resume):
-            logger.info(f"=> loading checkpoint '{args.resume}'")
-            loc = f'cuda:{args.gpu}'
-            checkpoint = torch.load(args.resume, map_location=loc)
-            args.best_loss = checkpoint['best_loss'].to(torch.device('cpu'))
-
-            if not (args.evaluate or args.finetune):
-                args.start_step = checkpoint['step']
-                t_optimizer.load_state_dict(checkpoint['teacher_optimizer'])
-                s_optimizer.load_state_dict(checkpoint['student_optimizer'])
-                t_scheduler.load_state_dict(checkpoint['teacher_scheduler'])
-                s_scheduler.load_state_dict(checkpoint['student_scheduler'])
-                t_scaler.load_state_dict(checkpoint['teacher_scaler'])
-                s_scaler.load_state_dict(checkpoint['student_scaler'])
-                model_load_state_dict(
-                    teacher_model, checkpoint['teacher_state_dict'])
-                # if avg_student_model is not None:
-                #     model_load_state_dict(
-                #         avg_student_model, checkpoint['avg_state_dict'])
-
-            else:
-                if checkpoint['avg_state_dict'] is not None:
-                    model_load_state_dict(
-                        student_model, checkpoint['avg_state_dict'])
-                else:
-                    model_load_state_dict(
-                        student_model, checkpoint['student_state_dict'])
-
-            logger.info(
-                f"=> loaded checkpoint '{args.resume}' (step {checkpoint['step']})")
-        else:
-            logger.info(f"=> no checkpoint found at '{args.resume}'")
-
-    if args.local_rank != -1:
-        teacher_model = nn.parallel.DistributedDataParallel(
-            teacher_model, device_ids=[args.local_rank],
-            output_device=args.local_rank, find_unused_parameters=True)
-        student_model = nn.parallel.DistributedDataParallel(
-            student_model, device_ids=[args.local_rank],
-            output_device=args.local_rank, find_unused_parameters=True)
-
-    teacher_model = teacher_model.to(args.device)
-    student_model = student_model.to(args.device)
-
-    criterion = nn.L1Loss(size_average=False).cuda()
-
     # t_optimizer = torch.optim.Adam(
     #     [  #
     #         {'params': teacher_model.parameters(), 'lr': args.teacher_lr},
@@ -331,6 +284,58 @@ def main():
     #                                               args.warmup_steps,
     #                                               args.total_steps,
     #                                               args.student_wait_steps,)
+
+    if args.resume:
+        if os.path.isfile(args.resume):
+            logger.info(f"=> loading checkpoint '{args.resume}'")
+            loc = f'cuda:{args.gpu}'
+            checkpoint = torch.load(args.resume, map_location=loc)
+            args.best_loss = checkpoint['best_loss'].to(torch.device('cpu'))
+
+            if not (args.evaluate or args.finetune):
+                args.start_step = checkpoint['step']
+                t_optimizer.load_state_dict(checkpoint['teacher_optimizer'])
+                s_optimizer.load_state_dict(checkpoint['student_optimizer'])
+                if t_scheduler:
+                    t_scheduler.load_state_dict(
+                        checkpoint['teacher_scheduler'])
+
+                if s_scheduler:
+                    s_scheduler.load_state_dict(
+                        checkpoint['student_scheduler'])
+                t_scaler.load_state_dict(checkpoint['teacher_scaler'])
+                s_scaler.load_state_dict(checkpoint['student_scaler'])
+                model_load_state_dict(
+                    teacher_model, checkpoint['teacher_state_dict'])
+                # if avg_student_model is not None:
+                #     model_load_state_dict(
+                #         avg_student_model, checkpoint['avg_state_dict'])
+
+            else:
+                if checkpoint['avg_state_dict'] is not None:
+                    model_load_state_dict(
+                        student_model, checkpoint['avg_state_dict'])
+                else:
+                    model_load_state_dict(
+                        student_model, checkpoint['student_state_dict'])
+
+            logger.info(
+                f"=> loaded checkpoint '{args.resume}' (step {checkpoint['step']})")
+        else:
+            logger.info(f"=> no checkpoint found at '{args.resume}'")
+
+    if args.local_rank != -1:
+        teacher_model = nn.parallel.DistributedDataParallel(
+            teacher_model, device_ids=[args.local_rank],
+            output_device=args.local_rank, find_unused_parameters=True)
+        student_model = nn.parallel.DistributedDataParallel(
+            student_model, device_ids=[args.local_rank],
+            output_device=args.local_rank, find_unused_parameters=True)
+
+    teacher_model = teacher_model.to(args.device)
+    student_model = student_model.to(args.device)
+
+    criterion = nn.L1Loss(size_average=False).cuda()
 
     if args.finetune:
         del t_scaler, t_optimizer, teacher_model, unlabeled_loader
