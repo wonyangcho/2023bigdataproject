@@ -312,12 +312,12 @@ def main():
                 #         avg_student_model, checkpoint['avg_state_dict'])
 
             else:
-                if checkpoint['avg_state_dict'] is not None:
-                    model_load_state_dict(
-                        student_model, checkpoint['avg_state_dict'])
-                else:
-                    model_load_state_dict(
-                        student_model, checkpoint['student_state_dict'])
+                # if checkpoint['avg_state_dict'] is not None:
+                #     model_load_state_dict(
+                #         student_model, checkpoint['avg_state_dict'])
+                # else:
+                model_load_state_dict(
+                    student_model, checkpoint['student_state_dict'])
 
             logger.info(
                 f"=> loaded checkpoint '{args.resume}' (step {checkpoint['step']})")
@@ -564,10 +564,10 @@ def train(args, labeled_loader, unlabeled_loader, test_loader, finetune_dataset,
     loc = f'cuda:{args.gpu}'
     checkpoint = torch.load(ckpt_name, map_location=loc)
     logger.info(f"=> loading checkpoint '{ckpt_name}'")
-    if checkpoint['avg_state_dict'] is not None:
-        model_load_state_dict(student_model, checkpoint['avg_state_dict'])
-    else:
-        model_load_state_dict(student_model, checkpoint['student_state_dict'])
+    # if checkpoint['avg_state_dict'] is not None:
+    #     model_load_state_dict(student_model, checkpoint['avg_state_dict'])
+    # else:
+    model_load_state_dict(student_model, checkpoint['student_state_dict'])
     finetune(args, finetune_dataset, test_loader, student_model, criterion)
 
 
