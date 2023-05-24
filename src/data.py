@@ -350,18 +350,20 @@ def get_crowd(args):
     # 일단 finetune도 train dataset을 이용하도록 하자. wycho
 
     train_l_list = []
+    val_l_list = []
     train_ul_list = []
     test_l_list = []
 
     train_dataset_paths = [args.train_ShanghaiA_data,
                            args.train_ShanghaiB_data, args.train_qnrf_data]
 
-    test_dataset_paths = [args.test_ShanghaiA_data,
-                          args.test_ShanghaiB_data, args.test_qnrf_data]
+    # test_dataset_paths = [args.test_ShanghaiA_data,
+    #                       args.test_ShanghaiB_data, args.test_qnrf_data]
+    test_dataset_paths = [args.test_dataset]
 
-    train_labeled_nums = [90, 120, 480]
+    train_labeled_nums = [30, 30, 120]
     train_unlabeled_nums = [210, 280, 721]
-    test_labeled_nums = [60, 80, 240]
+    val_labeled_nums = [60, 90, 240]
 
     for i, data_path in enumerate(train_dataset_paths):
 
@@ -370,10 +372,18 @@ def get_crowd(args):
             np.random.shuffle(train_list)
 
             labeled_list = train_list[:train_labeled_nums[i]]
-            unlabeled_list = train_list[train_labeled_nums[i]:train_labeled_nums[i]+train_unlabeled_nums[i]]
+            labeled_sum = train_labeled_nums[i]
+
+            val_labeled_list = train_list[labeled_sum:labeled_sum +
+                                          val_labeled_nums[i]]
+            labeled_sum = train_labeled_nums[i]+val_labeled_nums[i]
+
+            unlabeled_list = train_list[labeled_sum:labeled_sum +
+                                        train_unlabeled_nums[i]]
 
             train_l_list.extend(labeled_list)
             train_ul_list.extend(unlabeled_list)
+            val_l_list.extend(unlabeled_list)
 
     for i, data_path in enumerate(test_dataset_paths):
 
@@ -381,7 +391,7 @@ def get_crowd(args):
             test_list = np.load(outfile).tolist()
             np.random.shuffle(train_list)
 
-            test_list = train_list[:test_labeled_nums[i]]
+            # test_list = train_list[:test_labeled_nums[i]]
 
             test_l_list.extend(test_list)
 
@@ -425,10 +435,12 @@ def get_crowd(args):
         train_l_data, transform_finetune, train=True, args=args)
     train_unlabeled_dataset = listDataset(train_ul_data, TransformMPL(
         args, mean=normal_mean, std=normal_std), train=True, args=args)
+    val_labeled_dataset = listDataset(
+        test_data, transform_val, train=False, args=args)
     test_dataset = listDataset(
         test_data, transform_val, train=False, args=args)
 
-    return train_labeled_dataset, train_unlabeled_dataset, test_dataset, finetune_dataset
+    return train_labeled_dataset, train_unlabeled_dataset, val_labeled_dataset, test_dataset, finetune_dataset
     # return train_labeled_dataset, train_unlabeled_dataset, train_labeled_dataset, finetune_dataset
 
 

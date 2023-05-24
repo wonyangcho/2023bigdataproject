@@ -3,6 +3,7 @@ from logger import web_logger
 from utils import (AverageMeter, accuracy, create_loss_fn,
                    save_checkpoint, reduce_tensor, model_load_state_dict)
 from models.trans_crowd import base_patch16_384_token, base_patch16_384_gap
+from models.CCST import SwinTransformer_cc
 from data import DATASET_GETTERS
 from tqdm import tqdm
 from torch.utils.tensorboard import SummaryWriter
@@ -22,6 +23,7 @@ import time
 
 import numpy as np
 import torch
+from torch.optim.lr_scheduler import ReduceLROnPlateau
 # torch.autograd.set_detect_anomaly(True)
 
 
@@ -116,14 +118,10 @@ parser.add_argument('--train_ShanghaiA_data', default="", type=str,
                     help='train_ShanghaiA_data')
 parser.add_argument('--train_ShanghaiB_data', default="", type=str,
                     help='train_ShanghaiB_data')
-parser.add_argument('--test_ShanghaiA_data', default="", type=str,
+parser.add_argument('--test_dataset', default="", type=str,
                     help='train_ShanghaiA_data')
-parser.add_argument('--test_ShanghaiB_data', default="", type=str,
-                    help='train_ShanghaiB_data')
 parser.add_argument('--train_qnrf_data', default="", type=str,
                     help='train_qnrf_data')
-parser.add_argument('--test_qnrf_data', default="", type=str,
-                    help='test_qnrf_data')
 
 
 # wandb
@@ -139,6 +137,9 @@ parser.add_argument("--do_crop", action="store_true",
 
 parser.add_argument("--use_lr_scheduler", action="store_true",
                     help="use lr scheduler")
+
+parser.add_argument("--pretrained", action="store_true",
+                    help="use pretrained")
 
 
 def set_seed(args):
@@ -166,6 +167,15 @@ def get_cosine_schedule_with_warmup(optimizer,
         return max(0.0, 0.5 * (1.0 + math.cos(math.pi * float(num_cycles) * 2.0 * progress)))
 
     return LambdaLR(optimizer, lr_lambda, last_epoch)
+
+
+def check_nan_grad(parameters):
+    has_nan = False
+    for param in parameters:
+        if param.grad is not None and torch.isnan(param.grad).any():
+            print(f'NaN found in gradient of parameter {param}')
+            has_nan = True
+    return has_nan
 
 
 def main():
@@ -209,7 +219,7 @@ def main():
     if args.local_rank not in [-1, 0]:
         torch.distributed.barrier()
 
-    labeled_dataset, unlabeled_dataset, test_dataset, finetune_dataset = DATASET_GETTERS[args.dataset](
+    labeled_dataset, unlabeled_dataset, val_datset, test_dataset, finetune_dataset = DATASET_GETTERS[args.dataset](
         args)
 
     if args.local_rank == 0:
@@ -230,6 +240,11 @@ def main():
         num_workers=args.workers,
         drop_last=True)
 
+    val_loader = DataLoader(val_datset,
+                            sampler=SequentialSampler(val_datset),
+                            batch_size=1,
+                            num_workers=args.workers)
+
     test_loader = DataLoader(test_dataset,
                              sampler=SequentialSampler(test_dataset),
                              batch_size=1,
@@ -237,6 +252,11 @@ def main():
 
     teacher_model = base_patch16_384_token(pretrained=True)
     student_model = base_patch16_384_token(pretrained=True)
+
+    # teacher_model = SwinTransformer_cc(
+    #     pretrained=args.pretrained, home=args.home).cuda()
+    # student_model = SwinTransformer_cc(
+    #     pretrained=args.pretrained, home=args.home).cuda()
 
     teacher_model.to(args.device)
     student_model.to(args.device)
@@ -269,21 +289,20 @@ def main():
                              lr=args.student_lr)
 
     if args.use_lr_scheduler:
-        t_scheduler = torch.optim.lr_scheduler.StepLR(
-            t_optimizer, step_size=10000, gamma=0.1)
-        s_scheduler = torch.optim.lr_scheduler.StepLR(
-            s_optimizer, step_size=10000, gamma=0.1)
+        t_scheduler = ReduceLROnPlateau(
+            t_optimizer, mode='min', factor=0.1, patience=5)
+        s_scheduler = ReduceLROnPlateau(
+            s_optimizer, mode='min', factor=0.1, patience=5)
+        # t_scheduler = get_cosine_schedule_with_warmup(t_optimizer,
+        #                                               args.warmup_steps,
+        #                                               args.total_steps)
+        # s_scheduler = get_cosine_schedule_with_warmup(s_optimizer,
+        #                                               args.warmup_steps,
+        #                                               args.total_steps,
+        #                                               args.student_wait_steps,)
     else:
         t_scheduler = None
         s_scheduler = None
-
-    # t_scheduler = get_cosine_schedule_with_warmup(t_optimizer,
-    #                                               args.warmup_steps,
-    #                                               args.total_steps)
-    # s_scheduler = get_cosine_schedule_with_warmup(s_optimizer,
-    #                                               args.warmup_steps,
-    #                                               args.total_steps,
-    #                                               args.student_wait_steps,)
 
     if args.resume:
         if os.path.isfile(args.resume):
@@ -368,7 +387,7 @@ def main():
     teacher_model.zero_grad()
     student_model.zero_grad()
 
-    train(args, labeled_loader, unlabeled_loader, test_loader, finetune_dataset,
+    train(args, labeled_loader, unlabeled_loader, val_loader, test_loader, finetune_dataset,
           teacher_model, student_model,
           t_optimizer, s_optimizer, t_scheduler, s_scheduler, t_scaler, s_scaler, criterion)
 
@@ -377,7 +396,7 @@ def get_lr(optimizer):
     return optimizer.param_groups[0]['lr']
 
 
-def train(args, labeled_loader, unlabeled_loader, test_loader, finetune_dataset,
+def train(args, labeled_loader, unlabeled_loader, val_loader, test_loader, finetune_dataset,
           teacher_model, student_model,
           t_optimizer, s_optimizer, t_scheduler, s_scheduler, t_scaler, s_scaler, criterion):
 
@@ -452,6 +471,14 @@ def train(args, labeled_loader, unlabeled_loader, test_loader, finetune_dataset,
             s_scaler.unscale_(s_optimizer)
             nn.utils.clip_grad_norm_(
                 student_model.parameters(), args.grad_clip)
+
+        # if check_nan_grad(student_model.parameters()):
+        #     for param in student_model.parameters():
+        #         if param.grad is not None:
+        #             param.grad = torch.nan_to_num(param.grad)
+
+        nn.utils.clip_grad_value_(s_scaler.parameters(), 1.0)
+
         s_scaler.step(s_optimizer)
         s_scaler.update()
 
@@ -478,6 +505,12 @@ def train(args, labeled_loader, unlabeled_loader, test_loader, finetune_dataset,
             nn.utils.clip_grad_norm_(
                 teacher_model.parameters(), args.grad_clip)
 
+        # if check_nan_grad(teacher_model.parameters()):
+        #     for param in teacher_model.parameters():
+        #         if param.grad is not None:
+        #             param.grad = torch.nan_to_num(param.grad)
+
+        nn.utils.clip_grad_value_(t_scaler.parameters(), 1.0)
         t_scaler.step(t_optimizer)
         t_scaler.update()
 
@@ -520,7 +553,7 @@ def train(args, labeled_loader, unlabeled_loader, test_loader, finetune_dataset,
         if (step + 1) % args.eval_step == 0:
             pbar.close()
             if args.local_rank in [-1, 0]:
-                test_loss = validate(test_loader, student_model, args)
+                test_loss = validate(val_loader, student_model, args)
                 end2 = time.time()
 
                 is_best = test_loss < args.best_loss
