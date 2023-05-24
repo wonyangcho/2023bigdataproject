@@ -467,17 +467,17 @@ def train(args, labeled_loader, unlabeled_loader, val_loader, test_loader, finet
         # s_loss.backward()
 
         s_scaler.scale(s_loss).backward()
-        if args.grad_clip > 0:
-            s_scaler.unscale_(s_optimizer)
-            nn.utils.clip_grad_norm_(
-                student_model.parameters(), args.grad_clip)
+        # if args.grad_clip > 0:
+        #     s_scaler.unscale_(s_optimizer)
+        #     nn.utils.clip_grad_norm_(
+        #         student_model.parameters(), args.grad_clip)
 
         # if check_nan_grad(student_model.parameters()):
         #     for param in student_model.parameters():
         #         if param.grad is not None:
         #             param.grad = torch.nan_to_num(param.grad)
 
-        nn.utils.clip_grad_value_(s_scaler.parameters(), 1.0)
+        nn.utils.clip_grad_value_(student_model.parameters(), 1.0)
 
         s_scaler.step(s_optimizer)
         s_scaler.update()
@@ -500,17 +500,17 @@ def train(args, labeled_loader, unlabeled_loader, val_loader, test_loader, finet
         # t_optimizer.step()
 
         t_scaler.scale(t_loss).backward()
-        if args.grad_clip > 0:
-            t_scaler.unscale_(t_optimizer)
-            nn.utils.clip_grad_norm_(
-                teacher_model.parameters(), args.grad_clip)
+        # if args.grad_clip > 0:
+        #     t_scaler.unscale_(t_optimizer)
+        #     nn.utils.clip_grad_norm_(
+        #         teacher_model.parameters(), args.grad_clip)
 
         # if check_nan_grad(teacher_model.parameters()):
         #     for param in teacher_model.parameters():
         #         if param.grad is not None:
         #             param.grad = torch.nan_to_num(param.grad)
 
-        nn.utils.clip_grad_value_(t_scaler.parameters(), 1.0)
+        nn.utils.clip_grad_value_(teacher_model.parameters(), 1.0)
         t_scaler.step(t_optimizer)
         t_scaler.update()
 
