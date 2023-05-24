@@ -141,6 +141,9 @@ parser.add_argument("--use_lr_scheduler", action="store_true",
 parser.add_argument("--pretrained", action="store_true",
                     help="use pretrained")
 
+parser.add_argument("--gc_step", default=128, type=int,
+                    help="gradient accumulation step")
+
 
 def set_seed(args):
     random.seed(args.seed)
@@ -289,17 +292,17 @@ def main():
                              lr=args.student_lr)
 
     if args.use_lr_scheduler:
-        t_scheduler = ReduceLROnPlateau(
-            t_optimizer, mode='min', factor=0.1, patience=5)
-        s_scheduler = ReduceLROnPlateau(
-            s_optimizer, mode='min', factor=0.1, patience=5)
-        # t_scheduler = get_cosine_schedule_with_warmup(t_optimizer,
-        #                                               args.warmup_steps,
-        #                                               args.total_steps)
-        # s_scheduler = get_cosine_schedule_with_warmup(s_optimizer,
-        #                                               args.warmup_steps,
-        #                                               args.total_steps,
-        #                                               args.student_wait_steps,)
+        # t_scheduler = ReduceLROnPlateau(
+        #     t_optimizer, mode='min', factor=0.1, patience=5)
+        # s_scheduler = ReduceLROnPlateau(
+        #     s_optimizer, mode='min', factor=0.1, patience=5)
+        t_scheduler = get_cosine_schedule_with_warmup(t_optimizer,
+                                                      args.warmup_steps,
+                                                      args.total_steps)
+        s_scheduler = get_cosine_schedule_with_warmup(s_optimizer,
+                                                      args.warmup_steps,
+                                                      args.total_steps,
+                                                      args.student_wait_steps,)
     else:
         t_scheduler = None
         s_scheduler = None
@@ -408,9 +411,6 @@ def train(args, labeled_loader, unlabeled_loader, val_loader, test_loader, finet
 
     for step in range(args.start_step, args.total_steps):
 
-        t_optimizer.zero_grad()
-        s_optimizer.zero_grad()
-
         if step % args.eval_step == 0:
             pbar = tqdm(range(args.eval_step),
                         disable=args.local_rank not in [-1, 0])
@@ -466,7 +466,7 @@ def train(args, labeled_loader, unlabeled_loader, val_loader, test_loader, finet
 
         # s_loss.backward()
 
-        s_scaler.scale(s_loss).backward()
+        s_scaler.scale(s_loss/args.gc_step).backward()
         # if args.grad_clip > 0:
         #     s_scaler.unscale_(s_optimizer)
         #     nn.utils.clip_grad_norm_(
@@ -479,11 +479,12 @@ def train(args, labeled_loader, unlabeled_loader, val_loader, test_loader, finet
 
         nn.utils.clip_grad_value_(student_model.parameters(), 1.0)
 
-        s_scaler.step(s_optimizer)
-        s_scaler.update()
+        if (step+1) % args.gc_step == 0:
+            s_scaler.step(s_optimizer)
+            s_scaler.update()
 
-        if s_scheduler:
-            s_scheduler.step(s_loss)
+            if s_scheduler:
+                s_scheduler.step()
 
         with amp.autocast(enabled=args.amp):
             with torch.no_grad():
@@ -499,7 +500,7 @@ def train(args, labeled_loader, unlabeled_loader, val_loader, test_loader, finet
         # t_loss.backward()
         # t_optimizer.step()
 
-        t_scaler.scale(t_loss).backward()
+        t_scaler.scale(t_loss/args.gc_step).backward()
         # if args.grad_clip > 0:
         #     t_scaler.unscale_(t_optimizer)
         #     nn.utils.clip_grad_norm_(
@@ -511,11 +512,13 @@ def train(args, labeled_loader, unlabeled_loader, val_loader, test_loader, finet
         #             param.grad = torch.nan_to_num(param.grad)
 
         nn.utils.clip_grad_value_(teacher_model.parameters(), 1.0)
-        t_scaler.step(t_optimizer)
-        t_scaler.update()
 
-        if t_scheduler:
-            t_scheduler.step(t_loss)
+        if (step+1) % args.gc_step == 0:
+            t_scaler.step(t_optimizer)
+            t_scaler.update()
+
+            if t_scheduler:
+                t_scheduler.step()
 
         if args.world_size > 1:
             s_loss = reduce_tensor(s_loss.detach(), args.world_size)
@@ -539,7 +542,7 @@ def train(args, labeled_loader, unlabeled_loader, val_loader, test_loader, finet
 
         pbar.set_description(
             f"Train Iter: {step+1:3}/{args.total_steps:3}. "
-            f"LR: {get_lr(s_optimizer):.7f}. Data: {data_time.avg:.2f}s. "
+            f"LR: {get_lr(s_optimizer)}. Data: {data_time.avg:.2f}s. "
             f"Batch: {batch_time.avg:.2f}s. S_Loss: {s_losses.avg:.4f}. "
             f"T_Loss: {t_losses.avg:.4f}.  ")
         pbar.update()
@@ -549,6 +552,10 @@ def train(args, labeled_loader, unlabeled_loader, val_loader, test_loader, finet
 
         # print(
         #     f"Epoch: {step}\t S_Loss {s_losses.avg} T_Loss {t_losses.avg}")
+
+        if (step+1) % args.gc_step == 0:
+            t_optimizer.zero_grad()
+            s_optimizer.zero_grad()
 
         if (step + 1) % args.eval_step == 0:
             pbar.close()
