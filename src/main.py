@@ -483,7 +483,7 @@ def train(args, labeled_loader, unlabeled_loader, val_loader, test_loader, finet
         s_scaler.update()
 
         if s_scheduler:
-            s_scheduler.step()
+            s_scheduler.step(s_loss)
 
         with amp.autocast(enabled=args.amp):
             with torch.no_grad():
@@ -515,7 +515,7 @@ def train(args, labeled_loader, unlabeled_loader, val_loader, test_loader, finet
         t_scaler.update()
 
         if t_scheduler:
-            t_scheduler.step()
+            t_scheduler.step(t_loss)
 
         if args.world_size > 1:
             s_loss = reduce_tensor(s_loss.detach(), args.world_size)
