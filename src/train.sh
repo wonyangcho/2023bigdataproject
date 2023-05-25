@@ -27,7 +27,7 @@ CUDA_VISIBLE_DEVICES=1 python main.py \
     --finetune_lr 1e-5 \
     --finetune_weight_decay 0 \
     --finetune_momentum 0.9 \
-    --home "/work/wycho/2023bigdataproject/src/" \
+    --home "/work/wycho/project/2023bigdataproject/src/" \
     --train_ShanghaiA_data "npydata/ShanghaiA_train.npy" \
     --train_ShanghaiB_data "npydata/ShanghaiB_train.npy" \
     --train_qnrf_data "npydata/qnrf_train.npy" \
@@ -36,7 +36,7 @@ CUDA_VISIBLE_DEVICES=1 python main.py \
     --use_wandb \
     --do_crop \
     --use_lr_scheduler \
-    --gc_step 128
+    --gc_step 128 \
     --amp
 
 CUDA_VISIBLE_DEVICES=1 python main.py \
