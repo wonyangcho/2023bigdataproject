@@ -11,7 +11,7 @@ from scipy.ndimage.filters import gaussian_filter
 import random
 
 '''set your data path'''
-root = '/work/wycho/2023bigdataproject/data/ShanghaiTech/'
+root = '/work/wycho/project/2023bigdataproject/data/ShanghaiTech/'
 
 part_A_train = os.path.join(root, 'part_A_final/train_data', 'images')
 part_A_test = os.path.join(root, 'part_A_final/test_data', 'images')

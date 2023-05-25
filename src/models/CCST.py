@@ -973,10 +973,10 @@ class SwinTransformer(nn.Module):
             f.append(x)
             flag += 1
 
-        print(f[0].shape)
-        print(f[1].shape)
-        print(f[2].shape)
-        print(f[3].shape)
+        # print(f[0].shape)
+        # print(f[1].shape)
+        # print(f[2].shape)
+        # print(f[3].shape)
 
         f = self.neck(f)
         # print(f.shape)
@@ -988,7 +988,7 @@ class SwinTransformer(nn.Module):
 # swin_large_patch4_window12_384
 
 
-def SwinTransformer_cc(pretrained=True, **kwargs):
+def SwinTransformer_cc(pretrained=True, home="", **kwargs):
     model = SwinTransformer(img_size=384, patch_size=4, in_chans=3, num_classes=1000,
                             embed_dim=192, depths=[2, 2, 18, 2], num_heads=[6, 12, 24, 48],
                             window_size=12, mlp_ratio=4., qkv_bias=True, qk_scale=None,
@@ -999,7 +999,7 @@ def SwinTransformer_cc(pretrained=True, **kwargs):
     if pretrained:
         print("loading swin transformer pretrained")
         checkpoint = torch.load(
-            './pre_models/swin_large_patch4_window12_384_22k.pth')
+            home + '/models/swin_large_patch4_window12_384_22k.pth')
         model.load_state_dict(checkpoint["model"], strict=False)
     return model
 

@@ -7,8 +7,8 @@ if not os.path.exists('./npydata'):
 
 '''please set your dataset path'''
 try:
-    shanghaiAtrain_path = '/work/wycho/2023bigdataproject/data/ShanghaiTech/part_A_final/train_data/images_crop/'
-    shanghaiAtest_path = '/work/wycho/2023bigdataproject/data/ShanghaiTech/part_A_final/test_data/images_crop/'
+    shanghaiAtrain_path = '/work/wycho/project/2023bigdataproject/data/ShanghaiTech/part_A_final/train_data/images_crop/'
+    shanghaiAtest_path = '/work/wycho/project/2023bigdataproject/data/ShanghaiTech/part_A_final/test_data/images_crop/'
 
     train_list = []
     for filename in os.listdir(shanghaiAtrain_path):
@@ -32,8 +32,8 @@ except Exception as e:
 
 
 try:
-    shanghaiBtrain_path = '/work/wycho/2023bigdataproject/data/ShanghaiTech/part_B_final/train_data/images_crop/'
-    shanghaiBtest_path = '/work/wycho/2023bigdataproject/data/ShanghaiTech/part_B_final/test_data/images_crop/'
+    shanghaiBtrain_path = '/work/wycho/project/2023bigdataproject/data/ShanghaiTech/part_B_final/train_data/images_crop/'
+    shanghaiBtest_path = '/work/wycho/project/2023bigdataproject/data/ShanghaiTech/part_B_final/test_data/images_crop/'
 
     train_list = []
     for filename in os.listdir(shanghaiBtrain_path):
@@ -55,8 +55,8 @@ except Exception as e:
 
 
 try:
-    qnrf_train_path = '/work/wycho/2023bigdataproject/data/UCF-QNRF_ECCV18/train_data/images_crop/'
-    qnrf_test_path = '/work/wycho/2023bigdataproject/data/UCF-QNRF_ECCV18/test_data/images_crop/'
+    qnrf_train_path = '/work/wycho/project/2023bigdataproject/data/UCF-QNRF_ECCV18/train_data/images_crop/'
+    qnrf_test_path = '/work/wycho/project/2023bigdataproject/data/UCF-QNRF_ECCV18/test_data/images_crop/'
 
     train_list = []
     for filename in os.listdir(qnrf_train_path):

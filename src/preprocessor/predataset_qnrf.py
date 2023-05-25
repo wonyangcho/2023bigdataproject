@@ -13,7 +13,7 @@ import tqdm
 
 import glob
 '''change your dataset'''
-root = '/work/wycho/2023bigdataproject/data/UCF-QNRF_ECCV18'
+root = '/work/wycho/project/2023bigdataproject/data/UCF-QNRF_ECCV18'
 img_train_path = root + '/Train/'
 img_test_path = root + '/Test/'
 
