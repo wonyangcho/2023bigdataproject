@@ -5,21 +5,21 @@ CUDA_VISIBLE_DEVICES=1 python main.py \
     --dataset crowd \
     --num_labeled 10000 \
     --expand_labels \
-    --total_steps 100000 \
+    --total_steps 300000 \
     --eval_step 1000 \
     --randaug 2 16 \
     --batch_size 4 \
-    --teacher_lr 0.01\
-    --student_lr 0.01 \
+    --teacher_lr 1e-5\
+    --student_lr 1e-5 \
     --weight_decay 5e-4 \
     --nesterov \
     --mu 1 \
     --temperature 0.7 \
     --threshold 0.6 \
     --lambda_u 8 \
-    --warmup_steps 1000 \
+    --warmup_steps 5000 \
     --uda_steps 5000 \
-    --student_wait_steps 0 \
+    --student_wait_steps 3000 \
     --teacher_dropout 0.2 \
     --student_dropout 0.2 \
     --finetune_epochs 250 \
@@ -36,7 +36,7 @@ CUDA_VISIBLE_DEVICES=1 python main.py \
     --use_wandb \
     --do_crop \
     --use_lr_scheduler \
-    --gc_step 128 \
+    --gc_step 64 \
     --amp
 
 CUDA_VISIBLE_DEVICES=1 python main.py \

@@ -163,11 +163,11 @@ def get_cosine_schedule_with_warmup(optimizer,
             return 0.0
 
         if current_step < num_warmup_steps + num_wait_steps:
-            return float(current_step) / float(max(1, num_warmup_steps + num_wait_steps))
+            return 1e-5 * float(current_step) / float(max(1, num_warmup_steps + num_wait_steps))
 
         progress = float(current_step - num_warmup_steps - num_wait_steps) / \
             float(max(1, num_training_steps - num_warmup_steps - num_wait_steps))
-        return max(0.0, 0.5 * (1.0 + math.cos(math.pi * float(num_cycles) * 2.0 * progress)))
+        return max(0.0, 1e-5 * (1.0 + math.cos(math.pi * float(num_cycles) * 2.0 * progress)))
 
     return LambdaLR(optimizer, lr_lambda, last_epoch)
 
@@ -678,6 +678,7 @@ def finetune(args, finetune_dataset, test_loader, model, criterion):
     logger.info(
         f"   Finetuning steps = {len(labeled_loader)*args.finetune_epochs}")
 
+    model.zero_grad()
     for epoch in range(args.finetune_epochs):
         if args.world_size > 1:
             labeled_loader.sampler.set_epoch(epoch + 624)
@@ -699,13 +700,16 @@ def finetune(args, finetune_dataset, test_loader, model, criterion):
             images = images.to(args.device)
             targets = targets.to(args.device)
             with amp.autocast(enabled=args.amp):
-                model.zero_grad()
+
                 outputs = model(images)
                 loss = criterion(outputs, targets)
 
-            scaler.scale(loss).backward()
-            scaler.step(optimizer)
-            scaler.update()
+            scaler.scale(loss/args.gc_step).backward()
+
+            if (step+1) % args.gc_step == 0:
+                scaler.step(optimizer)
+                scaler.update()
+                model.zero_grad()
 
             if args.world_size > 1:
                 loss = reduce_tensor(loss.detach(), args.world_size)
