@@ -162,6 +162,9 @@ def get_cosine_schedule_with_warmup(optimizer,
     max_lr_value = 0.00005
 
     def lr_lambda(current_step):
+
+        current_step = current_step//accumulation_steps
+
         if current_step < num_wait_steps:
             return 0.0
 
