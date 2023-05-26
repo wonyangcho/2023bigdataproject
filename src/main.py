@@ -163,13 +163,11 @@ def get_cosine_schedule_with_warmup(optimizer,
 
     def lr_lambda(current_step):
 
-        current_step = current_step//accumulation_steps
-
         if current_step < num_wait_steps:
             return 0.0
 
         if current_step < num_warmup_steps + num_wait_steps:
-            return float(current_step) / float(max(1, num_warmup_steps + num_wait_steps))
+            return min(max_lr_value, float(current_step) / float(max(1, num_warmup_steps + num_wait_steps)))
 
         effective_training_steps = num_training_steps * accumulation_steps
         progress = float(current_step - num_warmup_steps - num_wait_steps) / \
