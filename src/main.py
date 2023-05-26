@@ -141,7 +141,7 @@ parser.add_argument("--use_lr_scheduler", action="store_true",
 parser.add_argument("--pretrained", action="store_true",
                     help="use pretrained")
 
-parser.add_argument("--gc_step", default=128, type=int,
+parser.add_argument("--accumulation_steps", default=1, type=int,
                     help="gradient accumulation step")
 
 
@@ -155,19 +155,27 @@ def set_seed(args):
 def get_cosine_schedule_with_warmup(optimizer,
                                     num_warmup_steps,
                                     num_training_steps,
+                                    accumulation_steps=1,
                                     num_wait_steps=0,
                                     num_cycles=0.5,
                                     last_epoch=-1):
+    max_lr_value = 0.00005
+
     def lr_lambda(current_step):
         if current_step < num_wait_steps:
             return 0.0
 
         if current_step < num_warmup_steps + num_wait_steps:
-            return 1e-5 * float(current_step) / float(max(1, num_warmup_steps + num_wait_steps))
+            return float(current_step) / float(max(1, num_warmup_steps + num_wait_steps))
 
+        effective_training_steps = num_training_steps * accumulation_steps
         progress = float(current_step - num_warmup_steps - num_wait_steps) / \
-            float(max(1, num_training_steps - num_warmup_steps - num_wait_steps))
-        return max(0.0, 1e-5 * (1.0 + math.cos(math.pi * float(num_cycles) * 2.0 * progress)))
+            float(max(1, effective_training_steps -
+                  num_warmup_steps - num_wait_steps))
+
+        cosine_val = 0.5 * \
+            (1.0 + math.cos(math.pi * float(num_cycles) * 2.0 * progress))
+        return max(0.0, min(max_lr_value, cosine_val))
 
     return LambdaLR(optimizer, lr_lambda, last_epoch)
 
@@ -292,16 +300,21 @@ def main():
                              lr=args.student_lr)
 
     if args.use_lr_scheduler:
+        args.warmup_steps = args.warmup_steps // args.accumulation_steps
+        args.student_wait_steps = args.student_wait_steps // args.accumulation_steps
+
         # t_scheduler = ReduceLROnPlateau(
         #     t_optimizer, mode='min', factor=0.1, patience=5)
         # s_scheduler = ReduceLROnPlateau(
         #     s_optimizer, mode='min', factor=0.1, patience=5)
         t_scheduler = get_cosine_schedule_with_warmup(t_optimizer,
                                                       args.warmup_steps,
-                                                      args.total_steps)
+                                                      args.total_steps,
+                                                      args.accumulation_steps)
         s_scheduler = get_cosine_schedule_with_warmup(s_optimizer,
                                                       args.warmup_steps,
                                                       args.total_steps,
+                                                      args.accumulation_steps,
                                                       args.student_wait_steps,)
     else:
         t_scheduler = None
@@ -466,7 +479,7 @@ def train(args, labeled_loader, unlabeled_loader, val_loader, test_loader, finet
 
         # s_loss.backward()
 
-        s_scaler.scale(s_loss/args.gc_step).backward()
+        s_scaler.scale(s_loss/args.accumulation_steps).backward()
         # if args.grad_clip > 0:
         #     s_scaler.unscale_(s_optimizer)
         #     nn.utils.clip_grad_norm_(
@@ -479,7 +492,7 @@ def train(args, labeled_loader, unlabeled_loader, val_loader, test_loader, finet
 
         nn.utils.clip_grad_value_(student_model.parameters(), 1.0)
 
-        if (step+1) % args.gc_step == 0:
+        if (step+1) % args.accumulation_steps == 0:
             s_scaler.step(s_optimizer)
             s_scaler.update()
 
@@ -500,7 +513,7 @@ def train(args, labeled_loader, unlabeled_loader, val_loader, test_loader, finet
         # t_loss.backward()
         # t_optimizer.step()
 
-        t_scaler.scale(t_loss/args.gc_step).backward()
+        t_scaler.scale(t_loss/args.accumulation_steps).backward()
         # if args.grad_clip > 0:
         #     t_scaler.unscale_(t_optimizer)
         #     nn.utils.clip_grad_norm_(
@@ -513,7 +526,7 @@ def train(args, labeled_loader, unlabeled_loader, val_loader, test_loader, finet
 
         nn.utils.clip_grad_value_(teacher_model.parameters(), 1.0)
 
-        if (step+1) % args.gc_step == 0:
+        if (step+1) % args.accumulation_steps == 0:
             t_scaler.step(t_optimizer)
             t_scaler.update()
 
@@ -553,7 +566,7 @@ def train(args, labeled_loader, unlabeled_loader, val_loader, test_loader, finet
         # print(
         #     f"Epoch: {step}\t S_Loss {s_losses.avg} T_Loss {t_losses.avg}")
 
-        if (step+1) % args.gc_step == 0:
+        if (step+1) % args.accumulation_steps == 0:
             t_optimizer.zero_grad()
             s_optimizer.zero_grad()
 
@@ -704,9 +717,9 @@ def finetune(args, finetune_dataset, test_loader, model, criterion):
                 outputs = model(images)
                 loss = criterion(outputs, targets)
 
-            scaler.scale(loss/args.gc_step).backward()
+            scaler.scale(loss/args.accumulation_steps).backward()
 
-            if (step+1) % args.gc_step == 0:
+            if (step+1) % args.accumulation_steps == 0:
                 scaler.step(optimizer)
                 scaler.update()
                 model.zero_grad()
