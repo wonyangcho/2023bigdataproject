@@ -4,6 +4,7 @@ from utils import (AverageMeter, accuracy, create_loss_fn,
                    save_checkpoint, reduce_tensor, model_load_state_dict)
 from models.trans_crowd import base_patch16_384_token, base_patch16_384_gap
 from models.CCST import SwinTransformer_cc
+from models.models import ModelEMA
 from data import DATASET_GETTERS
 from tqdm import tqdm
 from torch.utils.tensorboard import SummaryWriter
@@ -24,6 +25,7 @@ import time
 import numpy as np
 import torch
 from torch.optim.lr_scheduler import ReduceLROnPlateau
+from lion_pytorch import Lion
 # torch.autograd.set_detect_anomaly(True)
 
 
@@ -65,7 +67,7 @@ parser.add_argument('--momentum', default=0.9, type=float, help='SGD Momentum')
 parser.add_argument('--nesterov', action='store_true', help='use nesterov')
 parser.add_argument('--weight_decay', default=0,
                     type=float, help='train weight decay')
-# parser.add_argument('--ema', default=0, type=float, help='EMA decay rate')
+parser.add_argument('--ema', default=0, type=float, help='EMA decay rate')
 parser.add_argument('--warmup_steps', default=0, type=int, help='warmup steps')
 parser.add_argument('--student_wait_steps', default=0,
                     type=int, help='warmup steps')
@@ -273,6 +275,10 @@ def main():
     teacher_model.to(args.device)
     student_model.to(args.device)
 
+    avg_student_model = None
+    if args.ema > 0:
+        avg_student_model = ModelEMA(student_model, args.ema)
+
     t_scaler = amp.GradScaler(enabled=args.amp)
     s_scaler = amp.GradScaler(enabled=args.amp)
 
@@ -295,10 +301,12 @@ def main():
     #                         momentum=args.momentum,
     #                         nesterov=args.nesterov)
 
-    t_optimizer = optim.Adam(teacher_model.parameters(),
-                             lr=args.teacher_lr)
-    s_optimizer = optim.Adam(student_model.parameters(),
-                             lr=args.student_lr)
+    t_optimizer = Lion(teacher_model.parameters(),
+                       lr=args.teacher_lr,
+                       weight_decay=args.weight_decay)
+    s_optimizer = Lion(student_model.parameters(),
+                       lr=args.student_lr,
+                       weight_decay=args.weight_decay)
 
     if args.use_lr_scheduler:
         args.warmup_steps = args.warmup_steps // args.accumulation_steps
@@ -308,15 +316,19 @@ def main():
         #     t_optimizer, mode='min', factor=0.1, patience=5)
         # s_scheduler = ReduceLROnPlateau(
         #     s_optimizer, mode='min', factor=0.1, patience=5)
-        t_scheduler = get_cosine_schedule_with_warmup(t_optimizer,
-                                                      args.warmup_steps,
-                                                      args.total_steps,
-                                                      args.accumulation_steps)
-        s_scheduler = get_cosine_schedule_with_warmup(s_optimizer,
-                                                      args.warmup_steps,
-                                                      args.total_steps,
-                                                      args.accumulation_steps,
-                                                      args.student_wait_steps,)
+        # t_scheduler = get_cosine_schedule_with_warmup(t_optimizer,
+        #                                               args.warmup_steps,
+        #                                               args.total_steps,
+        #                                               args.accumulation_steps)
+        # s_scheduler = get_cosine_schedule_with_warmup(s_optimizer,
+        #                                               args.warmup_steps,
+        #                                               args.total_steps,
+        #                                               args.accumulation_steps,
+        #                                               args.student_wait_steps,)
+        t_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
+            t_optimizer, T_max=40, eta_min=1e-6)
+        s_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
+            t_optimizer, T_max=40, eta_min=1e-6)
     else:
         t_scheduler = None
         s_scheduler = None
@@ -343,17 +355,17 @@ def main():
                 s_scaler.load_state_dict(checkpoint['student_scaler'])
                 model_load_state_dict(
                     teacher_model, checkpoint['teacher_state_dict'])
-                # if avg_student_model is not None:
-                #     model_load_state_dict(
-                #         avg_student_model, checkpoint['avg_state_dict'])
+                if avg_student_model is not None:
+                    model_load_state_dict(
+                        avg_student_model, checkpoint['avg_state_dict'])
 
             else:
-                # if checkpoint['avg_state_dict'] is not None:
-                #     model_load_state_dict(
-                #         student_model, checkpoint['avg_state_dict'])
-                # else:
-                model_load_state_dict(
-                    student_model, checkpoint['student_state_dict'])
+                if checkpoint['avg_state_dict'] is not None:
+                    model_load_state_dict(
+                        student_model, checkpoint['avg_state_dict'])
+                else:
+                    model_load_state_dict(
+                        student_model, checkpoint['student_state_dict'])
 
             logger.info(
                 f"=> loaded checkpoint '{args.resume}' (step {checkpoint['step']})")
@@ -405,7 +417,7 @@ def main():
     student_model.zero_grad()
 
     train(args, labeled_loader, unlabeled_loader, val_loader, test_loader, finetune_dataset,
-          teacher_model, student_model,
+          teacher_model, student_model, avg_student_model,
           t_optimizer, s_optimizer, t_scheduler, s_scheduler, t_scaler, s_scaler, criterion)
 
 
@@ -414,7 +426,7 @@ def get_lr(optimizer):
 
 
 def train(args, labeled_loader, unlabeled_loader, val_loader, test_loader, finetune_dataset,
-          teacher_model, student_model,
+          teacher_model, student_model, avg_student_model,
           t_optimizer, s_optimizer, t_scheduler, s_scheduler, t_scaler, s_scaler, criterion):
 
     if args.world_size > 1:
@@ -500,6 +512,9 @@ def train(args, labeled_loader, unlabeled_loader, val_loader, test_loader, finet
             if s_scheduler:
                 s_scheduler.step()
 
+            if args.ema > 0:
+                avg_student_model.update_parameters(student_model)
+
         with amp.autocast(enabled=args.amp):
             with torch.no_grad():
                 s_logits_l = student_model(images_l)
@@ -574,7 +589,8 @@ def train(args, labeled_loader, unlabeled_loader, val_loader, test_loader, finet
         if (step + 1) % args.eval_step == 0:
             pbar.close()
             if args.local_rank in [-1, 0]:
-                test_loss = validate(val_loader, student_model, args)
+                test_model = avg_student_model if avg_student_model is not None else student_model
+                test_loss = validate(val_loader, test_model, args)
                 end2 = time.time()
 
                 is_best = test_loss < args.best_loss
@@ -586,7 +602,7 @@ def train(args, labeled_loader, unlabeled_loader, val_loader, test_loader, finet
                     'step': step + 1,
                     'teacher_state_dict': teacher_model.state_dict(),
                     'student_state_dict': student_model.state_dict(),
-                    # 'avg_state_dict': avg_student_model.state_dict() if avg_student_model is not None else None,
+                    'avg_state_dict': avg_student_model.state_dict() if avg_student_model is not None else None,
                     'best_loss': args.best_loss,
                     'teacher_optimizer': t_optimizer.state_dict(),
                     'student_optimizer': s_optimizer.state_dict(),
@@ -618,10 +634,10 @@ def train(args, labeled_loader, unlabeled_loader, val_loader, test_loader, finet
     loc = f'cuda:{args.gpu}'
     checkpoint = torch.load(ckpt_name, map_location=loc)
     logger.info(f"=> loading checkpoint '{ckpt_name}'")
-    # if checkpoint['avg_state_dict'] is not None:
-    #     model_load_state_dict(student_model, checkpoint['avg_state_dict'])
-    # else:
-    model_load_state_dict(student_model, checkpoint['student_state_dict'])
+    if checkpoint['avg_state_dict'] is not None:
+        model_load_state_dict(student_model, checkpoint['avg_state_dict'])
+    else:
+        model_load_state_dict(student_model, checkpoint['student_state_dict'])
     finetune(args, finetune_dataset, test_loader, student_model, criterion)
 
 
@@ -678,7 +694,9 @@ def finetune(args, finetune_dataset, test_loader, model, criterion):
         num_workers=args.workers,
         pin_memory=True)
 
-    optimizer = torch.optim.Adam(model.parameters(), lr=args.finetune_lr)
+    optimizer = Lion(model.parameters(),
+                     lr=args.finetune_lr,
+                     weight_decay=args.weight_decay)
 
     # optimizer = optim.SGD(model.parameters(),
     #                       lr=args.finetune_lr,

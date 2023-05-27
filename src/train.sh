@@ -9,9 +9,10 @@ CUDA_VISIBLE_DEVICES=1 python main.py \
     --eval_step 1000 \
     --randaug 2 16 \
     --batch_size 4 \
-    --teacher_lr 1e-5\
-    --student_lr 1e-5 \
+    --teacher_lr 1e-4\
+    --student_lr 1e-4 \
     --weight_decay 5e-4 \
+    --ema 0.995 \
     --nesterov \
     --mu 1 \
     --temperature 0.7 \
@@ -49,9 +50,10 @@ CUDA_VISIBLE_DEVICES=1 python main.py \
     --eval_step 1000 \
     --randaug 2 16 \
     --batch_size 4 \
-    --teacher_lr 0.00001\
-    --student_lr 0.00001 \
+    --teacher_lr 1e-4\
+    --student_lr 1e-4 \
     --weight_decay 5e-4 \
+    --ema 0.995 \
     --nesterov \
     --mu 1 \
     --temperature 0.7 \
@@ -88,9 +90,10 @@ CUDA_VISIBLE_DEVICES=1 python main.py \
     --eval_step 1000 \
     --randaug 2 16 \
     --batch_size 4 \
-    --teacher_lr 0.00001\
-    --student_lr 0.00001 \
+    --teacher_lr 1e-4\
+    --student_lr 1e-4 \
     --weight_decay 5e-4 \
+    --ema 0.995 \
     --nesterov \
     --mu 1 \
     --temperature 0.7 \
@@ -127,9 +130,10 @@ CUDA_VISIBLE_DEVICES=1 python main.py \
     --eval_step 1000 \
     --randaug 2 16 \
     --batch_size 4 \
-    --teacher_lr 0.00001\
-    --student_lr 0.00001 \
+    --teacher_lr 1e-4\
+    --student_lr 1e-4 \\
     --weight_decay 5e-4 \
+    --ema 0.995 \
     --nesterov \
     --mu 1 \
     --temperature 0.7 \
