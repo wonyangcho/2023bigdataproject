@@ -9,8 +9,8 @@ CUDA_VISIBLE_DEVICES=1 python main.py \
     --eval_step 1000 \
     --randaug 2 16 \
     --batch_size 4 \
-    --teacher_lr 1e-4\
-    --student_lr 1e-4 \
+    --teacher_lr 1e-5\
+    --student_lr 1e-5 \
     --weight_decay 5e-4 \
     --ema 0.995 \
     --nesterov \
@@ -50,8 +50,8 @@ CUDA_VISIBLE_DEVICES=1 python main.py \
     --eval_step 1000 \
     --randaug 2 16 \
     --batch_size 4 \
-    --teacher_lr 1e-4\
-    --student_lr 1e-4 \
+    --teacher_lr 1e-5\
+    --student_lr 1e-5 \
     --weight_decay 5e-4 \
     --ema 0.995 \
     --nesterov \
@@ -90,8 +90,8 @@ CUDA_VISIBLE_DEVICES=1 python main.py \
     --eval_step 1000 \
     --randaug 2 16 \
     --batch_size 4 \
-    --teacher_lr 1e-4\
-    --student_lr 1e-4 \
+    --teacher_lr 1e-5\
+    --student_lr 1e-5 \
     --weight_decay 5e-4 \
     --ema 0.995 \
     --nesterov \
@@ -130,8 +130,8 @@ CUDA_VISIBLE_DEVICES=1 python main.py \
     --eval_step 1000 \
     --randaug 2 16 \
     --batch_size 4 \
-    --teacher_lr 1e-4\
-    --student_lr 1e-4 \\
+    --teacher_lr 1e-5\
+    --student_lr 1e-5 \
     --weight_decay 5e-4 \
     --ema 0.995 \
     --nesterov \
@@ -149,7 +149,7 @@ CUDA_VISIBLE_DEVICES=1 python main.py \
     --finetune_lr 1e-5 \
     --finetune_weight_decay 0 \
     --finetune_momentum 0.9 \
-    --home "/work/wycho/2023bigdataproject/src/" \
+    --home "/work/wycho/project/2023bigdataproject/src/" \
     --train_ShanghaiA_data "npydata/ShanghaiA_train.npy" \
     --train_ShanghaiB_data "npydata/ShanghaiB_train.npy" \
     --train_qnrf_data "npydata/qnrf_train.npy" \

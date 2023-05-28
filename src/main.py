@@ -282,15 +282,15 @@ def main():
     t_scaler = amp.GradScaler(enabled=args.amp)
     s_scaler = amp.GradScaler(enabled=args.amp)
 
-    # t_optimizer = torch.optim.Adam(
-    #     [  #
-    #         {'params': teacher_model.parameters(), 'lr': args.teacher_lr},
-    #     ], lr=args.teacher_lr, weight_decay=args.weight_decay)
+    t_optimizer = torch.optim.Adam(
+        [  #
+            {'params': teacher_model.parameters(), 'lr': args.teacher_lr},
+        ], lr=args.teacher_lr, weight_decay=args.weight_decay)
 
-    # s_optimizer = torch.optim.Adam(
-    #     [  #
-    #         {'params': teacher_model.parameters(), 'lr': args.student_lr},
-    #     ], lr=args.student_lr, weight_decay=args.weight_decay)
+    s_optimizer = torch.optim.Adam(
+        [  #
+            {'params': teacher_model.parameters(), 'lr': args.student_lr},
+        ], lr=args.student_lr, weight_decay=args.weight_decay)
 
     # t_optimizer = optim.SGD(teacher_model.parameters(),
     #                         lr=args.teacher_lr,
@@ -328,7 +328,7 @@ def main():
         t_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
             t_optimizer, T_max=40, eta_min=1e-6)
         s_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
-            t_optimizer, T_max=40, eta_min=1e-6)
+            t_optimizer, T_max=40, eta_min=1e-8)
     else:
         t_scheduler = None
         s_scheduler = None
@@ -493,19 +493,20 @@ def train(args, labeled_loader, unlabeled_loader, val_loader, test_loader, finet
         # s_loss.backward()
 
         s_scaler.scale(s_loss/args.accumulation_steps).backward()
-        # if args.grad_clip > 0:
-        #     s_scaler.unscale_(s_optimizer)
-        #     nn.utils.clip_grad_norm_(
-        #         student_model.parameters(), args.grad_clip)
 
         # if check_nan_grad(student_model.parameters()):
         #     for param in student_model.parameters():
         #         if param.grad is not None:
         #             param.grad = torch.nan_to_num(param.grad)
 
-        nn.utils.clip_grad_value_(student_model.parameters(), 1.0)
+        # nn.utils.clip_grad_value_(student_model.parameters(), 1.0)
 
         if (step+1) % args.accumulation_steps == 0:
+            if args.grad_clip > 0:
+                s_scaler.unscale_(s_optimizer)
+                nn.utils.clip_grad_norm_(
+                    student_model.parameters(), args.grad_clip)
+
             s_scaler.step(s_optimizer)
             s_scaler.update()
 
@@ -530,19 +531,19 @@ def train(args, labeled_loader, unlabeled_loader, val_loader, test_loader, finet
         # t_optimizer.step()
 
         t_scaler.scale(t_loss/args.accumulation_steps).backward()
-        # if args.grad_clip > 0:
-        #     t_scaler.unscale_(t_optimizer)
-        #     nn.utils.clip_grad_norm_(
-        #         teacher_model.parameters(), args.grad_clip)
 
         # if check_nan_grad(teacher_model.parameters()):
         #     for param in teacher_model.parameters():
         #         if param.grad is not None:
         #             param.grad = torch.nan_to_num(param.grad)
 
-        nn.utils.clip_grad_value_(teacher_model.parameters(), 1.0)
+        # nn.utils.clip_grad_value_(teacher_model.parameters(), 1.0)
 
         if (step+1) % args.accumulation_steps == 0:
+            if args.grad_clip > 0:
+                t_scaler.unscale_(t_optimizer)
+                nn.utils.clip_grad_norm_(
+                    teacher_model.parameters(), args.grad_clip)
             t_scaler.step(t_optimizer)
             t_scaler.update()
 
@@ -583,8 +584,9 @@ def train(args, labeled_loader, unlabeled_loader, val_loader, test_loader, finet
         #     f"Epoch: {step}\t S_Loss {s_losses.avg} T_Loss {t_losses.avg}")
 
         if (step+1) % args.accumulation_steps == 0:
-            t_optimizer.zero_grad()
-            s_optimizer.zero_grad()
+
+            teacher_model.zero_grad()
+            student_model.zero_grad()
 
         if (step + 1) % args.eval_step == 0:
             pbar.close()
