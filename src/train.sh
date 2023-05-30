@@ -37,8 +37,8 @@ CUDA_VISIBLE_DEVICES=1 python main.py \
     --use_wandb \
     --do_crop \
     --use_lr_scheduler \
-    --accumulation_steps 64 \
-    --amp
+    --accumulation_steps 64 
+    #--amp
 
 CUDA_VISIBLE_DEVICES=1 python main.py \
     --seed 2 \
@@ -77,7 +77,6 @@ CUDA_VISIBLE_DEVICES=1 python main.py \
     --description "sch_ShanghaiA_test" \
     --use_wandb \
     --do_crop \
-    --amp \
     --evaluate
 
 CUDA_VISIBLE_DEVICES=1 python main.py \
@@ -117,7 +116,6 @@ CUDA_VISIBLE_DEVICES=1 python main.py \
     --description "sch_ShanghaiB_test" \
     --use_wandb \
     --do_crop \
-    --amp \
     --evaluate
 
 CUDA_VISIBLE_DEVICES=1 python main.py \

@@ -473,10 +473,12 @@ def train(args, labeled_loader, unlabeled_loader, val_loader, test_loader, finet
             t_logits_uw, t_logits_us = t_logits[batch_size:].chunk(2)
             del t_logits
 
-            t_loss_l = criterion(t_logits_l, targets)
-            t_loss_u = criterion(t_logits_us, t_logits_uw.detach())
+            t_loss_l = criterion(t_logits_l, targets)/args.accumulation_steps
+            t_loss_u = criterion(
+                t_logits_us, t_logits_uw.detach())/args.accumulation_steps
 
-            weight_u = args.lambda_u * min(1., (step + 1) / args.uda_steps)
+            weight_u = args.lambda_u * \
+                min(1., (step//args.accumulation_steps + 1) / args.uda_steps)
             t_loss_uda = t_loss_l + weight_u * t_loss_u
 
             s_images = torch.cat((images_l, images_us))
@@ -487,12 +489,14 @@ def train(args, labeled_loader, unlabeled_loader, val_loader, test_loader, finet
 
             del s_logits
 
-            s_loss_l_old = criterion(s_logits_l.detach(), targets)
-            s_loss = criterion(s_logits_us, t_logits_uw.detach())
+            s_loss_l_old = criterion(
+                s_logits_l.detach(), targets)/args.accumulation_steps
+            s_loss = criterion(
+                s_logits_us, t_logits_uw.detach())/args.accumulation_steps
 
         # s_loss.backward()
 
-        s_scaler.scale(s_loss/args.accumulation_steps).backward()
+        s_scaler.scale(s_loss).backward()
 
         # if check_nan_grad(student_model.parameters()):
         #     for param in student_model.parameters():
@@ -520,17 +524,19 @@ def train(args, labeled_loader, unlabeled_loader, val_loader, test_loader, finet
             with torch.no_grad():
                 s_logits_l = student_model(images_l)
 
-            s_loss_l_new = criterion(s_logits_l.detach(), targets)
+            s_loss_l_new = criterion(
+                s_logits_l.detach(), targets)/args.accumulation_steps
             dot_product = s_loss_l_new - s_loss_l_old
 
             t_loss_mpl = dot_product * \
-                criterion(t_logits_us, t_logits_uw.detach())
+                criterion(t_logits_us, t_logits_uw.detach()) / \
+                args.accumulation_steps
             t_loss = t_loss_uda + t_loss_mpl
 
         # t_loss.backward()
         # t_optimizer.step()
 
-        t_scaler.scale(t_loss/args.accumulation_steps).backward()
+        t_scaler.scale(t_loss).backward()
 
         # if check_nan_grad(teacher_model.parameters()):
         #     for param in teacher_model.parameters():
