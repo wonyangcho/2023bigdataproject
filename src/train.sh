@@ -33,7 +33,7 @@ CUDA_VISIBLE_DEVICES=1 python main.py \
     --train_ShanghaiB_data "npydata/ShanghaiB_train.npy" \
     --train_qnrf_data "npydata/qnrf_train.npy" \
     --test_dataset "npydata/ShanghaiA_test.npy" \
-    --description "sch+grad_clip+gc" \
+    --description "1st train" \
     --use_wandb \
     --do_crop \
     --use_lr_scheduler \

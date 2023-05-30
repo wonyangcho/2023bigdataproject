@@ -474,11 +474,10 @@ def train(args, labeled_loader, unlabeled_loader, val_loader, test_loader, finet
             del t_logits
 
             t_loss_l = criterion(t_logits_l, targets)/args.accumulation_steps
-            t_loss_u = criterion(
-                t_logits_us, t_logits_uw.detach())/args.accumulation_steps
-
+            t_loss_u = torch.mean(
+                torch.abs(t_logits_uw - t_logits_us)) / args.accumulation_steps
             weight_u = args.lambda_u * \
-                min(1., (step//args.accumulation_steps + 1) / args.uda_steps)
+                min(1., (step / args.accumulation_steps + 1) / args.uda_steps)
             t_loss_uda = t_loss_l + weight_u * t_loss_u
 
             s_images = torch.cat((images_l, images_us))
@@ -491,8 +490,9 @@ def train(args, labeled_loader, unlabeled_loader, val_loader, test_loader, finet
 
             s_loss_l_old = criterion(
                 s_logits_l.detach(), targets)/args.accumulation_steps
+
             s_loss = criterion(
-                s_logits_us, t_logits_uw.detach())/args.accumulation_steps
+                s_logits_us, t_logits_us.detach())/args.accumulation_steps
 
         # s_loss.backward()
 
@@ -529,7 +529,7 @@ def train(args, labeled_loader, unlabeled_loader, val_loader, test_loader, finet
             dot_product = s_loss_l_new - s_loss_l_old
 
             t_loss_mpl = dot_product * \
-                criterion(t_logits_us, t_logits_uw.detach()) / \
+                criterion(t_logits_us, s_logits_us.detach()) / \
                 args.accumulation_steps
             t_loss = t_loss_uda + t_loss_mpl
 
@@ -593,6 +593,9 @@ def train(args, labeled_loader, unlabeled_loader, val_loader, test_loader, finet
 
             teacher_model.zero_grad()
             student_model.zero_grad()
+
+            s_optimizer.zero_grad()
+            t_optimizer.zero_grad()
 
         if (step + 1) % args.eval_step == 0:
             pbar.close()
