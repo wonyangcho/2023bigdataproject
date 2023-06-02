@@ -318,19 +318,19 @@ def main():
         #     t_optimizer, mode='min', factor=0.1, patience=5)
         # s_scheduler = ReduceLROnPlateau(
         #     s_optimizer, mode='min', factor=0.1, patience=5)
-        # t_scheduler = get_cosine_schedule_with_warmup(t_optimizer,
-        #                                               args.warmup_steps,
-        #                                               args.total_steps,
-        #                                               args.accumulation_steps)
-        # s_scheduler = get_cosine_schedule_with_warmup(s_optimizer,
-        #                                               args.warmup_steps,
-        #                                               args.total_steps,
-        #                                               args.accumulation_steps,
-        #                                               args.student_wait_steps,)
-        t_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
-            t_optimizer, T_max=40, eta_min=1e-6)
-        s_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
-            t_optimizer, T_max=40, eta_min=1e-8)
+        t_scheduler = get_cosine_schedule_with_warmup(t_optimizer,
+                                                      args.warmup_steps,
+                                                      args.total_steps,
+                                                      args.accumulation_steps)
+        s_scheduler = get_cosine_schedule_with_warmup(s_optimizer,
+                                                      args.warmup_steps,
+                                                      args.total_steps,
+                                                      args.accumulation_steps,
+                                                      args.student_wait_steps,)
+        # t_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
+        #     t_optimizer, T_max=40, eta_min=1e-6)
+        # s_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
+        #     t_optimizer, T_max=40, eta_min=1e-8)
     else:
         t_scheduler = None
         s_scheduler = None
@@ -506,6 +506,20 @@ def train(args, labeled_loader, unlabeled_loader, val_loader, test_loader, finet
 
             s_scaler.scale(s_loss).backward()
 
+            if args.grad_clip > 0:
+                s_scaler.unscale_(s_optimizer)
+                nn.utils.clip_grad_norm_(
+                    student_model.parameters(), args.grad_clip)
+
+            s_scaler.step(s_optimizer)
+            s_scaler.update()
+
+            if s_scheduler:
+                s_scheduler.step()
+
+            if args.ema > 0:
+                avg_student_model.update_parameters(student_model)
+
             with amp.autocast(enabled=args.amp):
                 with torch.no_grad():
                     s_logits_l = student_model(images_l)
@@ -520,6 +534,19 @@ def train(args, labeled_loader, unlabeled_loader, val_loader, test_loader, finet
                 t_loss = t_loss_uda + t_loss_mpl
 
             t_scaler.scale(t_loss).backward()
+
+            if args.grad_clip > 0:
+                t_scaler.unscale_(t_optimizer)
+                nn.utils.clip_grad_norm_(
+                    teacher_model.parameters(), args.grad_clip)
+            t_scaler.step(t_optimizer)
+            t_scaler.update()
+
+            if t_scheduler:
+                t_scheduler.step()
+
+            teacher_model.zero_grad()
+            student_model.zero_grad()
 
             if args.world_size > 1:
                 s_loss = reduce_tensor(s_loss.detach(), args.world_size)
@@ -551,30 +578,6 @@ def train(args, labeled_loader, unlabeled_loader, val_loader, test_loader, finet
             if args.local_rank in [-1, 0]:
                 args.writer.add_scalar("lr", get_lr(s_optimizer), step)
                 web_logger.log(args, {"lr": get_lr(s_optimizer)})
-
-        if args.grad_clip > 0:
-            s_scaler.unscale_(s_optimizer)
-            nn.utils.clip_grad_norm_(
-                student_model.parameters(), args.grad_clip)
-
-        s_scaler.step(s_optimizer)
-        s_scaler.update()
-
-        if s_scheduler:
-            s_scheduler.step()
-
-        if args.ema > 0:
-            avg_student_model.update_parameters(student_model)
-
-        if args.grad_clip > 0:
-            t_scaler.unscale_(t_optimizer)
-            nn.utils.clip_grad_norm_(
-                teacher_model.parameters(), args.grad_clip)
-        t_scaler.step(t_optimizer)
-        t_scaler.update()
-
-        if t_scheduler:
-            t_scheduler.step()
 
         pbar.close()
         if args.local_rank in [-1, 0]:
@@ -611,12 +614,6 @@ def train(args, labeled_loader, unlabeled_loader, val_loader, test_loader, finet
                            {"train/4.t_unlabeled": t_losses_u.avg})
             web_logger.log(args,
                            {"train/5.t_mpl": t_losses_mpl.avg})
-
-        teacher_model.zero_grad()
-        student_model.zero_grad()
-
-        s_optimizer.zero_grad()
-        t_optimizer.zero_grad()
 
     if args.local_rank in [-1, 0]:
         args.writer.add_scalar("result/test_loss", args.best_loss)

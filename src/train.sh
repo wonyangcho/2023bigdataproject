@@ -5,12 +5,12 @@ CUDA_VISIBLE_DEVICES=1 python main.py \
     --dataset crowd \
     --num_labeled 10000 \
     --expand_labels \
-    --total_steps 10000 \
+    --total_steps 3000 \
     --eval_step 100 \
     --randaug 2 16 \
     --batch_size 8 \
-    --teacher_lr 1e-5\
-    --student_lr 1e-5 \
+    --teacher_lr 0.05\
+    --student_lr 0.05 \
     --weight_decay 5e-4 \
     --ema 0.995 \
     --nesterov \
@@ -18,9 +18,9 @@ CUDA_VISIBLE_DEVICES=1 python main.py \
     --temperature 0.7 \
     --threshold 0.6 \
     --lambda_u 8 \
-    --warmup_steps 500 \
-    --uda_steps 500 \
-    --student_wait_steps 300 \
+    --warmup_steps 30 \
+    --uda_steps 30 \
+    --student_wait_steps 10 \
     --teacher_dropout 0.2 \
     --student_dropout 0.2 \
     --finetune_epochs 250 \
@@ -36,7 +36,7 @@ CUDA_VISIBLE_DEVICES=1 python main.py \
     --description "1st train" \
     --do_crop \
     --use_lr_scheduler \
-    --accumulation_steps 1 
+    --accumulation_steps 1 \
     --amp \
     --use_wandb \
 
