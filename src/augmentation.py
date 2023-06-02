@@ -278,7 +278,6 @@ class RandAugment(object):
         FILL_COLOR = fill
         self.n = int(n)
         self.m = m
-        self.mstd = mstd
         self.augment_pool = rand_augment_pool()
 
     def __call__(self, img):
@@ -324,5 +323,5 @@ class RandAugmentMC(object):
             v = np.random.randint(1, self.m)
             if random.random() < 0.5:
                 img = op(img, v=v, max_v=max_v, bias=bias)
-        img = CutoutConst(img, 40)
+        img = CutoutConst(img, v=self.m, max_v=32 // 4)
         return img

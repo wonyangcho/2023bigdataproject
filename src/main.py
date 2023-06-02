@@ -52,7 +52,7 @@ parser.add_argument('--start_step', default=0, type=int,
 parser.add_argument('--workers', default=4, type=int, help='number of workers')
 # parser.add_argument('--num-classes', default=10
 #                     type=int, help='number of classes')
-parser.add_argument('--resize', default=32, type=int, help='resize image')
+parser.add_argument('--resize', default=1.0, type=float, help='resize image')
 parser.add_argument('--batch_size', default=64,
                     type=int, help='train batch size')
 parser.add_argument('--teacher_dropout', default=0,
@@ -196,6 +196,8 @@ def main():
     args = parser.parse_args()
 
     args.best_loss = float('inf')
+    args.w = 384
+    args.h = 384
 
     if args.local_rank != -1:
         args.gpu = args.local_rank
@@ -435,204 +437,187 @@ def train(args, labeled_loader, unlabeled_loader, val_loader, test_loader, finet
         labeled_loader.sampler.set_epoch(labeled_epoch)
         unlabeled_loader.sampler.set_epoch(unlabeled_epoch)
 
+    max_iters = max(len(labeled_loader), len(unlabeled_loader))
+    args.eval_step = max_iters
+
+    labeled_iter = iter(labeled_loader)
+    unlabeled_iter = iter(unlabeled_loader)
+
     for step in range(args.start_step, args.total_steps):
 
-        if step % args.eval_step == 0:
-            pbar = tqdm(range(args.eval_step),
-                        disable=args.local_rank not in [-1, 0])
-            batch_time = AverageMeter()
-            data_time = AverageMeter()
-            s_losses = AverageMeter()
-            t_losses = AverageMeter()
-            t_losses_l = AverageMeter()
-            t_losses_u = AverageMeter()
-            t_losses_mpl = AverageMeter()
+        pbar = tqdm(range(args.eval_step),
+                    disable=args.local_rank not in [-1, 0])
+        batch_time = AverageMeter()
+        data_time = AverageMeter()
+        s_losses = AverageMeter()
+        t_losses = AverageMeter()
+        t_losses_l = AverageMeter()
+        t_losses_u = AverageMeter()
+        t_losses_mpl = AverageMeter()
 
         teacher_model.train()
         student_model.train()
 
         end = time.time()
 
-        labeled_iter = iter(labeled_loader)
-        images_l, targets = next(labeled_iter)
-        unlabeled_iter = iter(unlabeled_loader)
-        (images_uw, images_us), _ = next(unlabeled_iter)
+        for step in range(max_iters):
 
-        data_time.update(time.time() - end)
+            labeled_iter = iter(labeled_loader)
+            images_l, targets = next(labeled_iter)
+            unlabeled_iter = iter(unlabeled_loader)
+            (images_uw, images_us), _ = next(unlabeled_iter)
 
-        images_l = images_l.to(args.device)
-        images_uw = images_uw.to(args.device)
-        images_us = images_us.to(args.device)
-        targets = targets.to(args.device)
+            data_time.update(time.time() - end)
 
-        with amp.autocast(enabled=args.amp):
-            batch_size = images_l.shape[0]
-            t_images = torch.cat((images_l, images_uw, images_us))
-            t_logits = teacher_model(t_images)
-            t_logits_l = t_logits[:batch_size]
-            t_logits_uw, t_logits_us = t_logits[batch_size:].chunk(2)
-            del t_logits
+            images_l = images_l.to(args.device)
+            images_uw = images_uw.to(args.device)
+            images_us = images_us.to(args.device)
+            targets = targets.to(args.device)
 
-            t_loss_l = criterion(t_logits_l, targets)/args.accumulation_steps
-            t_loss_u = torch.mean(
-                torch.abs(t_logits_uw - t_logits_us)) / args.accumulation_steps
-            weight_u = args.lambda_u * \
-                min(1., (step / args.accumulation_steps + 1) / args.uda_steps)
-            t_loss_uda = t_loss_l + weight_u * t_loss_u
+            with amp.autocast(enabled=args.amp):
+                batch_size = images_l.shape[0]
+                t_images = torch.cat((images_l, images_uw, images_us))
+                t_logits = teacher_model(t_images)
+                t_logits_l = t_logits[:batch_size]
+                t_logits_uw, t_logits_us = t_logits[batch_size:].chunk(2)
+                del t_logits
 
-            s_images = torch.cat((images_l, images_us))
+                t_loss_l = criterion(t_logits_l, targets) / \
+                    args.accumulation_steps
+                t_loss_u = torch.mean(
+                    torch.abs(t_logits_uw - t_logits_us)) / args.accumulation_steps
+                weight_u = args.lambda_u * \
+                    min(1., (step / args.accumulation_steps + 1) / args.uda_steps)
+                t_loss_uda = t_loss_l + weight_u * t_loss_u
 
-            s_logits = student_model(s_images)
-            s_logits_l = s_logits[:batch_size]
-            s_logits_us = s_logits[batch_size:]
+                s_images = torch.cat((images_l, images_uw))
 
-            del s_logits
+                s_logits = student_model(s_images)
+                s_logits_l = s_logits[:batch_size]
+                s_logits_uw = s_logits[batch_size:]
 
-            s_loss_l_old = criterion(
-                s_logits_l.detach(), targets)/args.accumulation_steps
+                del s_logits
 
-            s_loss = criterion(
-                s_logits_us, t_logits_us.detach())/args.accumulation_steps
+                s_loss_l_old = criterion(
+                    s_logits_l.detach(), targets)/args.accumulation_steps
 
-        # s_loss.backward()
+                s_loss = criterion(
+                    s_logits_uw, t_logits_uw.detach())/args.accumulation_steps
 
-        s_scaler.scale(s_loss).backward()
+            s_scaler.scale(s_loss).backward()
 
-        # if check_nan_grad(student_model.parameters()):
-        #     for param in student_model.parameters():
-        #         if param.grad is not None:
-        #             param.grad = torch.nan_to_num(param.grad)
+            with amp.autocast(enabled=args.amp):
+                with torch.no_grad():
+                    s_logits_l = student_model(images_l)
 
-        # nn.utils.clip_grad_value_(student_model.parameters(), 1.0)
+                s_loss_l_new = criterion(
+                    s_logits_l.detach(), targets)/args.accumulation_steps
+                dot_product = s_loss_l_new - s_loss_l_old
 
-        if (step+1) % args.accumulation_steps == 0:
-            if args.grad_clip > 0:
-                s_scaler.unscale_(s_optimizer)
-                nn.utils.clip_grad_norm_(
-                    student_model.parameters(), args.grad_clip)
+                t_loss_mpl = dot_product * \
+                    criterion(t_logits_uw, s_logits_uw.detach()) / \
+                    args.accumulation_steps
+                t_loss = t_loss_uda + t_loss_mpl
 
-            s_scaler.step(s_optimizer)
-            s_scaler.update()
+            t_scaler.scale(t_loss).backward()
 
-            if s_scheduler:
-                s_scheduler.step()
+            if args.world_size > 1:
+                s_loss = reduce_tensor(s_loss.detach(), args.world_size)
+                t_loss = reduce_tensor(t_loss.detach(), args.world_size)
+                t_loss_l = reduce_tensor(t_loss_l.detach(), args.world_size)
+                t_loss_u = reduce_tensor(t_loss_u.detach(), args.world_size)
+                t_loss_mpl = reduce_tensor(
+                    t_loss_mpl.detach(), args.world_size)
 
-            if args.ema > 0:
-                avg_student_model.update_parameters(student_model)
+            s_losses.update(s_loss.item())
 
-        with amp.autocast(enabled=args.amp):
-            with torch.no_grad():
-                s_logits_l = student_model(images_l)
+            t_losses.update(t_loss.mean().item())
+            t_losses_l.update(t_loss_l.item())
 
-            s_loss_l_new = criterion(
-                s_logits_l.detach(), targets)/args.accumulation_steps
-            dot_product = s_loss_l_new - s_loss_l_old
+            t_losses_u.update(t_loss_u.mean().item())
+            t_losses_mpl.update(t_loss_mpl.item())
 
-            t_loss_mpl = dot_product * \
-                criterion(t_logits_us, s_logits_us.detach()) / \
-                args.accumulation_steps
-            t_loss = t_loss_uda + t_loss_mpl
+            batch_time.update(time.time() - end)
+            end = time.time()
 
-        # t_loss.backward()
-        # t_optimizer.step()
+            batch_time.update(time.time() - end)
 
-        t_scaler.scale(t_loss).backward()
-
-        # if check_nan_grad(teacher_model.parameters()):
-        #     for param in teacher_model.parameters():
-        #         if param.grad is not None:
-        #             param.grad = torch.nan_to_num(param.grad)
-
-        # nn.utils.clip_grad_value_(teacher_model.parameters(), 1.0)
-
-        if (step+1) % args.accumulation_steps == 0:
-            if args.grad_clip > 0:
-                t_scaler.unscale_(t_optimizer)
-                nn.utils.clip_grad_norm_(
-                    teacher_model.parameters(), args.grad_clip)
-            t_scaler.step(t_optimizer)
-            t_scaler.update()
-
-            if t_scheduler:
-                t_scheduler.step()
-
-        if args.world_size > 1:
-            s_loss = reduce_tensor(s_loss.detach(), args.world_size)
-            t_loss = reduce_tensor(t_loss.detach(), args.world_size)
-            t_loss_l = reduce_tensor(t_loss_l.detach(), args.world_size)
-            t_loss_u = reduce_tensor(t_loss_u.detach(), args.world_size)
-            t_loss_mpl = reduce_tensor(t_loss_mpl.detach(), args.world_size)
-
-        s_losses.update(s_loss.item())
-
-        t_losses.update(t_loss.mean().item())
-        t_losses_l.update(t_loss_l.item())
-
-        t_losses_u.update(t_loss_u.mean().item())
-        t_losses_mpl.update(t_loss_mpl.item())
-
-        batch_time.update(time.time() - end)
-        end = time.time()
-
-        batch_time.update(time.time() - end)
-
-        pbar.set_description(
-            f"Train Iter: {step+1:3}/{args.total_steps:3}. "
-            f"LR: {get_lr(s_optimizer)}. Data: {data_time.avg:.2f}s. "
-            f"Batch: {batch_time.avg:.2f}s. S_Loss: {s_losses.avg:.4f}. "
-            f"T_Loss: {t_losses.avg:.4f}.  ")
-        pbar.update()
-        if args.local_rank in [-1, 0]:
-            args.writer.add_scalar("lr", get_lr(s_optimizer), step)
-            web_logger.log(args, {"lr": get_lr(s_optimizer)})
-
-        # print(
-        #     f"Epoch: {step}\t S_Loss {s_losses.avg} T_Loss {t_losses.avg}")
-
-        if (step+1) % args.accumulation_steps == 0:
-
-            teacher_model.zero_grad()
-            student_model.zero_grad()
-
-            s_optimizer.zero_grad()
-            t_optimizer.zero_grad()
-
-        if (step + 1) % args.eval_step == 0:
-            pbar.close()
+            pbar.set_description(
+                f"Train Iter: {step+1:3}/{args.total_steps:3}. "
+                f"LR: {get_lr(s_optimizer)}. Data: {data_time.avg:.2f}s. "
+                f"Batch: {batch_time.avg:.2f}s. S_Loss: {s_losses.avg:.4f}. "
+                f"T_Loss: {t_losses.avg:.4f}.  ")
+            pbar.update()
             if args.local_rank in [-1, 0]:
-                test_model = avg_student_model if avg_student_model is not None else student_model
-                test_loss = validate(val_loader, test_model, args)
-                end2 = time.time()
+                args.writer.add_scalar("lr", get_lr(s_optimizer), step)
+                web_logger.log(args, {"lr": get_lr(s_optimizer)})
 
-                is_best = test_loss < args.best_loss
-                args.best_loss = min(test_loss, args.best_loss)
+        if args.grad_clip > 0:
+            s_scaler.unscale_(s_optimizer)
+            nn.utils.clip_grad_norm_(
+                student_model.parameters(), args.grad_clip)
 
-                print(f" * best MAE {args.best_loss:.3f}")
+        s_scaler.step(s_optimizer)
+        s_scaler.update()
 
-                save_checkpoint(args, {
-                    'step': step + 1,
-                    'teacher_state_dict': teacher_model.state_dict(),
-                    'student_state_dict': student_model.state_dict(),
-                    'avg_state_dict': avg_student_model.state_dict() if avg_student_model is not None else None,
-                    'best_loss': args.best_loss,
-                    'teacher_optimizer': t_optimizer.state_dict(),
-                    'student_optimizer': s_optimizer.state_dict(),
-                    'teacher_scheduler': t_scheduler.state_dict() if t_scheduler else None,
-                    'student_scheduler': s_scheduler.state_dict() if s_scheduler else None,
-                    'teacher_scaler': t_scaler.state_dict(),
-                    'student_scaler': s_scaler.state_dict(),
-                }, is_best)
+        if s_scheduler:
+            s_scheduler.step()
 
-                web_logger.log(args,
-                               {"train/1.s_loss": s_losses.avg})
-                web_logger.log(args,
-                               {"train/2.t_loss": t_losses.avg})
-                web_logger.log(args,
-                               {"train/3.t_labeled": t_losses_l.avg})
-                web_logger.log(args,
-                               {"train/4.t_unlabeled": t_losses_u.avg})
-                web_logger.log(args,
-                               {"train/5.t_mpl": t_losses_mpl.avg})
+        if args.ema > 0:
+            avg_student_model.update_parameters(student_model)
+
+        if args.grad_clip > 0:
+            t_scaler.unscale_(t_optimizer)
+            nn.utils.clip_grad_norm_(
+                teacher_model.parameters(), args.grad_clip)
+        t_scaler.step(t_optimizer)
+        t_scaler.update()
+
+        if t_scheduler:
+            t_scheduler.step()
+
+        pbar.close()
+        if args.local_rank in [-1, 0]:
+            test_model = avg_student_model if avg_student_model is not None else student_model
+            test_loss = validate(val_loader, test_model, args)
+            end2 = time.time()
+
+            is_best = test_loss < args.best_loss
+            args.best_loss = min(test_loss, args.best_loss)
+
+            print(f" * best MAE {args.best_loss:.3f}")
+
+            save_checkpoint(args, {
+                'step': step + 1,
+                'teacher_state_dict': teacher_model.state_dict(),
+                'student_state_dict': student_model.state_dict(),
+                'avg_state_dict': avg_student_model.state_dict() if avg_student_model is not None else None,
+                'best_loss': args.best_loss,
+                'teacher_optimizer': t_optimizer.state_dict(),
+                'student_optimizer': s_optimizer.state_dict(),
+                'teacher_scheduler': t_scheduler.state_dict() if t_scheduler else None,
+                'student_scheduler': s_scheduler.state_dict() if s_scheduler else None,
+                'teacher_scaler': t_scaler.state_dict(),
+                'student_scaler': s_scaler.state_dict(),
+            }, is_best)
+
+            web_logger.log(args,
+                           {"train/1.s_loss": s_losses.avg})
+            web_logger.log(args,
+                           {"train/2.t_loss": t_losses.avg})
+            web_logger.log(args,
+                           {"train/3.t_labeled": t_losses_l.avg})
+            web_logger.log(args,
+                           {"train/4.t_unlabeled": t_losses_u.avg})
+            web_logger.log(args,
+                           {"train/5.t_mpl": t_losses_mpl.avg})
+
+        teacher_model.zero_grad()
+        student_model.zero_grad()
+
+        s_optimizer.zero_grad()
+        t_optimizer.zero_grad()
+
     if args.local_rank in [-1, 0]:
         args.writer.add_scalar("result/test_loss", args.best_loss)
         web_logger.log(args, {"result/test_loss": args.best_loss})
