@@ -37,8 +37,8 @@ CUDA_VISIBLE_DEVICES=1 python main.py \
     --do_crop \
     --use_lr_scheduler \
     --accumulation_steps 1 
-    #--amp
-    #--use_wandb \
+    --amp \
+    --use_wandb \
 
 # CUDA_VISIBLE_DEVICES=1 python main.py \
 #     --seed 2 \

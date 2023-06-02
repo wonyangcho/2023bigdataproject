@@ -460,7 +460,7 @@ def train(args, labeled_loader, unlabeled_loader, val_loader, test_loader, finet
 
         end = time.time()
 
-        for step in range(max_iters):
+        for inner_step in range(max_iters):
 
             labeled_iter = iter(labeled_loader)
             images_l, targets = next(labeled_iter)
