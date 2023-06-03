@@ -9,8 +9,8 @@ CUDA_VISIBLE_DEVICES=1 python main.py \
     --eval_step 1000 \
     --randaug 2 16 \
     --batch_size 8 \
-    --teacher_lr 0.05\
-    --student_lr 0.05 \
+    --teacher_lr 1e-5\
+    --student_lr 1e-5 \
     --weight_decay 5e-4 \
     --ema 0.995 \
     --nesterov \
@@ -23,7 +23,7 @@ CUDA_VISIBLE_DEVICES=1 python main.py \
     --student_wait_steps 3000 \
     --teacher_dropout 0.2 \
     --student_dropout 0.2 \
-    --finetune_epochs 250 \
+    --finetune_epochs 625 \
     --finetune_batch_size 8 \
     --finetune_lr 1e-5 \
     --finetune_weight_decay 0 \
@@ -37,6 +37,7 @@ CUDA_VISIBLE_DEVICES=1 python main.py \
     --do_crop \
     --use_lr_scheduler \
     --accumulation_steps 1 \
+    --pretrained \
     --amp \
     --use_wandb \
 

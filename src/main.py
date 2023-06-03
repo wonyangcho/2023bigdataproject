@@ -1,3 +1,4 @@
+import torch.nn.init as init
 import pdb
 from logger import web_logger
 from utils import (AverageMeter, accuracy, create_loss_fn,
@@ -26,7 +27,7 @@ import numpy as np
 import torch
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 from lion_pytorch import Lion
-# torch.autograd.set_detect_anomaly(True)
+torch.autograd.set_detect_anomaly(True)
 
 
 logger = logging.getLogger(__name__)
@@ -257,8 +258,8 @@ def main():
                              batch_size=1,
                              num_workers=args.workers)
 
-    teacher_model = base_patch16_384_token(pretrained=True)
-    student_model = base_patch16_384_token(pretrained=True)
+    teacher_model = base_patch16_384_gap(pretrained=args.pretrained)
+    student_model = base_patch16_384_gap(pretrained=args.pretrained)
 
     # teacher_model = SwinTransformer_cc(
     #     pretrained=args.pretrained, home=args.home).cuda()
@@ -374,7 +375,7 @@ def main():
     teacher_model = teacher_model.to(args.device)
     student_model = student_model.to(args.device)
 
-    criterion = nn.L1Loss(size_average=False).cuda()
+    criterion = create_loss_fn(args)
 
     if args.finetune:
         del t_scaler, t_optimizer, teacher_model, unlabeled_loader
@@ -429,6 +430,18 @@ def train(args, labeled_loader, unlabeled_loader, val_loader, test_loader, finet
     labeled_iter = iter(labeled_loader)
     unlabeled_iter = iter(unlabeled_loader)
 
+    for name, param in student_model.named_parameters():
+        if torch.isnan(param).any():
+            print(f"NaN values found in parameter '{name}'")
+            if torch.isnan(param).any():
+                init.normal_(param.data)
+
+    for name, param in teacher_model.named_parameters():
+        if torch.isnan(param).any():
+            print(f"NaN values found in parameter '{name}'")
+            if torch.isnan(param).any():
+                init.normal_(param.data)
+
     for step in range(args.start_step, args.total_steps):
 
         if step % args.eval_step == 0:
@@ -452,6 +465,7 @@ def train(args, labeled_loader, unlabeled_loader, val_loader, test_loader, finet
             # error occurs ↓
             # images_l, targets = labeled_iter.next()
             images_l, targets = next(labeled_iter)
+
         except:
             if args.world_size > 1:
                 labeled_epoch += 1
@@ -472,6 +486,8 @@ def train(args, labeled_loader, unlabeled_loader, val_loader, test_loader, finet
             # (images_uw, images_us), _ = unlabeled_iter.next()
             (images_uw, images_us), _ = next(unlabeled_iter)
 
+        targets = torch.unsqueeze(targets, dim=1)
+
         data_time.update(time.time() - end)
 
         images_l = images_l.to(args.device)
@@ -479,7 +495,12 @@ def train(args, labeled_loader, unlabeled_loader, val_loader, test_loader, finet
         images_us = images_us.to(args.device)
         targets = targets.to(args.device)
 
+        # Clear gradients
+        teacher_model.zero_grad()
+        student_model.zero_grad()
+
         with amp.autocast(enabled=args.amp):
+            # Teacher model inference
             batch_size = images_l.shape[0]
             t_images = torch.cat((images_l, images_uw, images_us))
             t_logits = teacher_model(t_images)
@@ -487,36 +508,38 @@ def train(args, labeled_loader, unlabeled_loader, val_loader, test_loader, finet
             t_logits_uw, t_logits_us = t_logits[batch_size:].chunk(2)
             del t_logits
 
+            # Teacher UDA loss
             t_loss_l = criterion(t_logits_l, targets) / \
                 args.accumulation_steps
 
-            clip_value = 2000  # 클리핑 설정
-            threshold = 100
-
-            diff = torch.abs(t_logits_uw - t_logits_us)
-            # diff_clipped = torch.clamp(diff, max=clip_value)  # 큰 값은 임계값으로 클리핑
-            # # 차이가 임계값 이하인 경우에 1, 그렇지 않은 경우에 0
-            # mask = diff_clipped.le(threshold).float()
-
-            t_loss_u = torch.mean(diff) / args.accumulation_steps
+            t_loss_u = torch.mean(F.smooth_l1_loss(
+                t_logits_uw, t_logits_us)) / args.accumulation_steps
             # t_loss_u = torch.mean(diff_clipped) / args.accumulation_steps
             weight_u = args.lambda_u * \
                 min(1., (step / args.accumulation_steps + 1) / args.uda_steps)
             t_loss_uda = t_loss_l + weight_u * t_loss_u
 
+            # Student model inference
             s_images = torch.cat((images_l, images_us))
-
             s_logits = student_model(s_images)
             s_logits_l = s_logits[:batch_size]
             s_logits_us = s_logits[batch_size:]
 
             del s_logits
 
+            # Student loss
             s_loss_l_old = F.smooth_l1_loss(
-                s_logits_l.detach(), targets, size_average=False)/args.accumulation_steps
+                s_logits_l.detach(), targets)/args.accumulation_steps
 
             s_loss = criterion(
                 s_logits_us, t_logits_us.detach())/args.accumulation_steps
+
+            if torch.any(torch.isnan(s_loss)):
+                print("s_loss contains NaN values. {s_loss}")
+                # NaN 값을 제거하거나 다른 값으로 대체할 수 있는 처리를 수행합니다.
+                # NaN 값을 0으로 대체합니다.
+                s_loss = torch.nan_to_num(
+                    s_loss, nan=0.0, posinf=0.0, neginf=0.0)
 
         s_scaler.scale(s_loss).backward()
 
@@ -547,6 +570,13 @@ def train(args, labeled_loader, unlabeled_loader, val_loader, test_loader, finet
                 args.accumulation_steps
             t_loss = t_loss_uda + t_loss_mpl
 
+            if torch.any(torch.isnan(t_loss)):
+                print("s_loss contains NaN values.")
+                # NaN 값을 제거하거나 다른 값으로 대체할 수 있는 처리를 수행합니다.
+                # NaN 값을 0으로 대체합니다.
+                t_loss = torch.nan_to_num(
+                    t_loss, nan=0.0, posinf=0.0, neginf=0.0)
+
         t_scaler.scale(t_loss).backward()
 
         if args.grad_clip > 0:
@@ -558,9 +588,6 @@ def train(args, labeled_loader, unlabeled_loader, val_loader, test_loader, finet
 
         if t_scheduler:
             t_scheduler.step()
-
-        teacher_model.zero_grad()
-        student_model.zero_grad()
 
         if args.world_size > 1:
             s_loss = reduce_tensor(s_loss.detach(), args.world_size)
