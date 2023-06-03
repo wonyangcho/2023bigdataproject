@@ -157,28 +157,19 @@ def set_seed(args):
 def get_cosine_schedule_with_warmup(optimizer,
                                     num_warmup_steps,
                                     num_training_steps,
-                                    accumulation_steps=1,
                                     num_wait_steps=0,
                                     num_cycles=0.5,
                                     last_epoch=-1):
-    max_lr_value = 0.00005
-
     def lr_lambda(current_step):
-
         if current_step < num_wait_steps:
             return 0.0
 
         if current_step < num_warmup_steps + num_wait_steps:
-            return min(max_lr_value, float(current_step) / float(max(1, num_warmup_steps + num_wait_steps)))
+            return float(current_step) / float(max(1, num_warmup_steps + num_wait_steps))
 
-        effective_training_steps = num_training_steps * accumulation_steps
         progress = float(current_step - num_warmup_steps - num_wait_steps) / \
-            float(max(1, effective_training_steps -
-                  num_warmup_steps - num_wait_steps))
-
-        cosine_val = 0.5 * \
-            (1.0 + math.cos(math.pi * float(num_cycles) * 2.0 * progress))
-        return max(0.0, min(max_lr_value, cosine_val))
+            float(max(1, num_training_steps - num_warmup_steps - num_wait_steps))
+        return max(0.0, 0.5 * (1.0 + math.cos(math.pi * float(num_cycles) * 2.0 * progress)))
 
     return LambdaLR(optimizer, lr_lambda, last_epoch)
 
@@ -320,12 +311,10 @@ def main():
         #     s_optimizer, mode='min', factor=0.1, patience=5)
         t_scheduler = get_cosine_schedule_with_warmup(t_optimizer,
                                                       args.warmup_steps,
-                                                      args.total_steps,
-                                                      args.accumulation_steps)
+                                                      args.total_steps)
         s_scheduler = get_cosine_schedule_with_warmup(s_optimizer,
                                                       args.warmup_steps,
                                                       args.total_steps,
-                                                      args.accumulation_steps,
                                                       args.student_wait_steps,)
         # t_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
         #     t_optimizer, T_max=40, eta_min=1e-6)
@@ -500,25 +489,34 @@ def train(args, labeled_loader, unlabeled_loader, val_loader, test_loader, finet
 
             t_loss_l = criterion(t_logits_l, targets) / \
                 args.accumulation_steps
-            t_loss_u = torch.mean(
-                torch.abs(t_logits_uw - t_logits_us)) / args.accumulation_steps
+
+            clip_value = 2000  # 클리핑 설정
+            threshold = 100
+
+            diff = torch.abs(t_logits_uw - t_logits_us)
+            # diff_clipped = torch.clamp(diff, max=clip_value)  # 큰 값은 임계값으로 클리핑
+            # # 차이가 임계값 이하인 경우에 1, 그렇지 않은 경우에 0
+            # mask = diff_clipped.le(threshold).float()
+
+            t_loss_u = torch.mean(diff * mask) / args.accumulation_steps
+            # t_loss_u = torch.mean(diff_clipped) / args.accumulation_steps
             weight_u = args.lambda_u * \
                 min(1., (step / args.accumulation_steps + 1) / args.uda_steps)
             t_loss_uda = t_loss_l + weight_u * t_loss_u
 
-            s_images = torch.cat((images_l, images_uw))
+            s_images = torch.cat((images_l, images_us))
 
             s_logits = student_model(s_images)
             s_logits_l = s_logits[:batch_size]
-            s_logits_uw = s_logits[batch_size:]
+            s_logits_us = s_logits[batch_size:]
 
             del s_logits
 
-            s_loss_l_old = criterion(
-                s_logits_l.detach(), targets)/args.accumulation_steps
+            s_loss_l_old = F.smooth_l1_loss(
+                s_logits_l.detach(), targets, size_average=False)/args.accumulation_steps
 
             s_loss = criterion(
-                s_logits_uw, t_logits_uw.detach())/args.accumulation_steps
+                s_logits_us, t_logits_us.detach())/args.accumulation_steps
 
         s_scaler.scale(s_loss).backward()
 
@@ -540,12 +538,12 @@ def train(args, labeled_loader, unlabeled_loader, val_loader, test_loader, finet
             with torch.no_grad():
                 s_logits_l = student_model(images_l)
 
-            s_loss_l_new = criterion(
+            s_loss_l_new = F.smooth_l1_loss(
                 s_logits_l.detach(), targets)/args.accumulation_steps
             dot_product = s_loss_l_new - s_loss_l_old
 
             t_loss_mpl = dot_product * \
-                criterion(t_logits_uw, s_logits_uw.detach()) / \
+                F.smooth_l1_loss(t_logits_us, s_logits_us.detach()) / \
                 args.accumulation_steps
             t_loss = t_loss_uda + t_loss_mpl
 

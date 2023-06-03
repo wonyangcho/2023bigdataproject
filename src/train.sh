@@ -5,8 +5,8 @@ CUDA_VISIBLE_DEVICES=1 python main.py \
     --dataset crowd \
     --num_labeled 10000 \
     --expand_labels \
-    --total_steps 3000 \
-    --eval_step 100 \
+    --total_steps 300000 \
+    --eval_step 1000 \
     --randaug 2 16 \
     --batch_size 8 \
     --teacher_lr 0.05\
@@ -18,9 +18,9 @@ CUDA_VISIBLE_DEVICES=1 python main.py \
     --temperature 0.7 \
     --threshold 0.6 \
     --lambda_u 8 \
-    --warmup_steps 30 \
-    --uda_steps 30 \
-    --student_wait_steps 10 \
+    --warmup_steps 5000 \
+    --uda_steps 5000 \
+    --student_wait_steps 3000 \
     --teacher_dropout 0.2 \
     --student_dropout 0.2 \
     --finetune_epochs 250 \
