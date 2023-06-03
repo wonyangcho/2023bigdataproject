@@ -49,7 +49,8 @@ def get_cifar10(args):
     ])
     base_dataset = datasets.CIFAR10(args.data_path, train=True, download=True)
 
-    train_labeled_idxs, train_unlabeled_idxs, finetune_idxs = x_u_split(args, base_dataset.targets)
+    train_labeled_idxs, train_unlabeled_idxs, finetune_idxs = x_u_split(
+        args, base_dataset.targets)
 
     train_labeled_dataset = CIFAR10SSL(
         args.data_path, train_labeled_idxs, train=True,
@@ -100,7 +101,8 @@ def get_cifar100(args):
 
     base_dataset = datasets.CIFAR100(args.data_path, train=True, download=True)
 
-    train_labeled_idxs, train_unlabeled_idxs, finetune_idxs = x_u_split(args, base_dataset.targets)
+    train_labeled_idxs, train_unlabeled_idxs, finetune_idxs = x_u_split(
+        args, base_dataset.targets)
 
     train_labeled_dataset = CIFAR100SSL(
         args.data_path, train_labeled_idxs, train=True,
@@ -143,7 +145,7 @@ def x_u_split(args, labels):
         return labeled_idx_ex, unlabeled_idx, labeled_idx
     else:
         np.random.shuffle(labeled_idx)
-        return labeled_idx, unlabeled_idx, lebeled_idx
+        return labeled_idx, unlabeled_idx, labeled_idx
 
 
 def x_u_split_test(args, labels):

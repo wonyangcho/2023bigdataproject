@@ -60,11 +60,14 @@ def save_checkpoint(args, state, is_best, finetune=False):
     if finetune:
         name = f'{args.name}_finetune'
     else:
-        name = args.name
+        if args.dataset_index == -1:
+            name = args.name
+        else:
+            name = f"{args.name}_{args.dataset_index}"
     filename = f'{args.save_path}/{name}_last.pth.tar'
     torch.save(state, filename, _use_new_zipfile_serialization=False)
     if is_best:
-        shutil.copyfile(filename, f'{args.save_path}/{args.name}_best.pth.tar')
+        shutil.copyfile(filename, f'{args.save_path}/{name}_best.pth.tar')
 
 
 def accuracy(output, target, topk=(1,)):

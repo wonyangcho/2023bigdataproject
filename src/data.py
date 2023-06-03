@@ -156,6 +156,12 @@ def get_crowd(args):
     train_unlabeled_nums = [210, 280, 721]
     val_labeled_nums = [60, 90, 240]
 
+    if args.dataset_index != -1:
+        train_dataset_paths = [train_dataset_paths[args.dataset_index]]
+        train_labeled_nums = [train_labeled_nums[args.dataset_index]]
+        train_unlabeled_nums = [train_unlabeled_nums[args.dataset_index]]
+        val_labeled_nums = [val_labeled_nums[args.dataset_index]]
+
     for i, data_path in enumerate(train_dataset_paths):
 
         with open(args.home+data_path, 'rb') as outfile:

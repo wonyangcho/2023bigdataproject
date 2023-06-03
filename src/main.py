@@ -92,6 +92,8 @@ parser.add_argument('--finetune_weight_decay', default=0,
                     type=float, help='finetune weight decay')
 parser.add_argument('--finetune_momentum', default=0.9,
                     type=float, help='finetune SGD Momentum')
+parser.add_argument('--dataset_index', default=-1,
+                    type=int, help='use dataset index')
 parser.add_argument('--seed', default=None, type=int,
                     help='seed for initializing training')
 # parser.add_argument('--label-smoothing', default=0,
@@ -666,7 +668,14 @@ def train(args, labeled_loader, unlabeled_loader, val_loader, test_loader, finet
     # finetune
     del t_scaler, t_scheduler, t_optimizer, teacher_model, labeled_loader, unlabeled_loader
     del s_scaler, s_scheduler, s_optimizer
-    ckpt_name = f'{args.save_path}/{args.name}_best.pth.tar'
+
+    if args.dataset_index == -1:
+        name = args.name
+    else:
+        name = f"{args.name}_{args.dataset_index}"
+
+    ckpt_name = f'{args.save_path}/{name}_best.pth.tar'
+
     loc = f'cuda:{args.gpu}'
     checkpoint = torch.load(ckpt_name, map_location=loc)
     logger.info(f"=> loading checkpoint '{ckpt_name}'")
