@@ -498,7 +498,7 @@ def train(args, labeled_loader, unlabeled_loader, val_loader, test_loader, finet
             # # 차이가 임계값 이하인 경우에 1, 그렇지 않은 경우에 0
             # mask = diff_clipped.le(threshold).float()
 
-            t_loss_u = torch.mean(diff * mask) / args.accumulation_steps
+            t_loss_u = torch.mean(diff) / args.accumulation_steps
             # t_loss_u = torch.mean(diff_clipped) / args.accumulation_steps
             weight_u = args.lambda_u * \
                 min(1., (step / args.accumulation_steps + 1) / args.uda_steps)
