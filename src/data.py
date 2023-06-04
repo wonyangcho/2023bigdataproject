@@ -24,7 +24,6 @@ from dataset import listDataset
 logger = logging.getLogger(__name__)
 
 
-cifar100_std = (0.267334, 0.256438, 0.276151)
 normal_mean = (0.485, 0.456, 0.406)
 normal_std = (0.229, 0.224, 0.225)
 
@@ -148,8 +147,6 @@ def get_crowd(args):
     train_dataset_paths = [args.train_ShanghaiA_data,
                            args.train_ShanghaiB_data, args.train_qnrf_data]
 
-    # test_dataset_paths = [args.test_ShanghaiA_data,
-    #                       args.test_ShanghaiB_data, args.test_qnrf_data]
     test_dataset_paths = [args.test_dataset]
 
     train_labeled_nums = [30, 30, 120]

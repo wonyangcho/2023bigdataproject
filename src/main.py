@@ -288,21 +288,21 @@ def main():
             {'params': teacher_model.parameters(), 'lr': args.student_lr},
         ], lr=args.student_lr, weight_decay=args.weight_decay)
 
-    # t_optimizer = optim.SGD(teacher_model.parameters(),
-    #                         lr=args.teacher_lr,
-    #                         momentum=args.momentum,
-    #                         nesterov=args.nesterov)
-    # s_optimizer = optim.SGD(student_model.parameters(),
-    #                         lr=args.student_lr,
-    #                         momentum=args.momentum,
-    #                         nesterov=args.nesterov)
+    t_optimizer = optim.SGD(teacher_model.parameters(),
+                            lr=args.teacher_lr,
+                            momentum=args.momentum,
+                            nesterov=args.nesterov)
+    s_optimizer = optim.SGD(student_model.parameters(),
+                            lr=args.student_lr,
+                            momentum=args.momentum,
+                            nesterov=args.nesterov)
 
-    t_optimizer = Lion(teacher_model.parameters(),
-                       lr=args.teacher_lr,
-                       weight_decay=args.weight_decay)
-    s_optimizer = Lion(student_model.parameters(),
-                       lr=args.student_lr,
-                       weight_decay=args.weight_decay)
+    # t_optimizer = Lion(teacher_model.parameters(),
+    #                    lr=args.teacher_lr,
+    #                    weight_decay=args.weight_decay)
+    # s_optimizer = Lion(student_model.parameters(),
+    #                    lr=args.student_lr,
+    #                    weight_decay=args.weight_decay)
 
     if args.use_lr_scheduler:
         args.warmup_steps = args.warmup_steps // args.accumulation_steps
@@ -419,6 +419,12 @@ def get_lr(optimizer):
     return optimizer.param_groups[0]['lr']
 
 
+def check_nan_parameters(model):
+    for name, param in model.named_parameters():
+        if torch.isnan(param).any():
+            print(f"============NaN values found in parameter: {name}")
+
+
 def train(args, labeled_loader, unlabeled_loader, val_loader, test_loader, finetune_dataset,
           teacher_model, student_model, avg_student_model,
           t_optimizer, s_optimizer, t_scheduler, s_scheduler, t_scaler, s_scaler, criterion):
@@ -523,11 +529,12 @@ def train(args, labeled_loader, unlabeled_loader, val_loader, test_loader, finet
 
             # Student model inference
             s_images = torch.cat((images_l, images_us))
+
             s_logits = student_model(s_images)
+            check_nan_parameters(student_model)
+
             s_logits_l = s_logits[:batch_size]
             s_logits_us = s_logits[batch_size:]
-
-            del s_logits
 
             # Student loss
             s_loss_l_old = F.smooth_l1_loss(
@@ -536,12 +543,17 @@ def train(args, labeled_loader, unlabeled_loader, val_loader, test_loader, finet
             s_loss = criterion(
                 s_logits_us, t_logits_us.detach())/args.accumulation_steps
 
+            # NaN 값을 검사하여 처리
             if torch.any(torch.isnan(s_loss)):
-                print("s_loss contains NaN values. {s_loss}")
-                # NaN 값을 제거하거나 다른 값으로 대체할 수 있는 처리를 수행합니다.
-                # NaN 값을 0으로 대체합니다.
-                s_loss = torch.nan_to_num(
-                    s_loss, nan=0.0, posinf=0.0, neginf=0.0)
+                print("s_loss contains NaN values.")
+                # NaN 값을 작은 음수 값으로 대체
+                s_loss = torch.nan_to_num(s_loss, nan=-1e9)
+
+            # posinf와 neginf 값을 작은 음수 값으로 대체
+            s_loss = torch.where(torch.isposinf(s_loss) | torch.isneginf(
+                s_loss), torch.tensor(-1e9), s_loss)
+
+            del s_logits
 
         s_scaler.scale(s_loss).backward()
 
@@ -739,15 +751,15 @@ def finetune(args, finetune_dataset, test_loader, model, criterion):
         num_workers=args.workers,
         pin_memory=True)
 
-    optimizer = Lion(model.parameters(),
-                     lr=args.finetune_lr,
-                     weight_decay=args.weight_decay)
+    # optimizer = Lion(model.parameters(),
+    #                  lr=args.finetune_lr,
+    #                  weight_decay=args.weight_decay)
 
-    # optimizer = optim.SGD(model.parameters(),
-    #                       lr=args.finetune_lr,
-    #                       momentum=args.finetune_momentum,
-    #                       weight_decay=args.finetune_weight_decay,
-    #                       nesterov=True)
+    optimizer = optim.SGD(model.parameters(),
+                          lr=args.finetune_lr,
+                          momentum=args.finetune_momentum,
+                          weight_decay=args.finetune_weight_decay,
+                          nesterov=True)
 
     scaler = amp.GradScaler(enabled=args.amp)
 
