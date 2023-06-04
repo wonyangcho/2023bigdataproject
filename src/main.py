@@ -305,8 +305,8 @@ def main():
     #                    weight_decay=args.weight_decay)
 
     if args.use_lr_scheduler:
-        args.warmup_steps = args.warmup_steps // args.accumulation_steps
-        args.student_wait_steps = args.student_wait_steps // args.accumulation_steps
+        args.warmup_steps = args.warmup_steps
+        args.student_wait_steps = args.student_wait_steps
 
         # t_scheduler = ReduceLROnPlateau(
         #     t_optimizer, mode='min', factor=0.1, patience=5)
@@ -517,14 +517,12 @@ def train(args, labeled_loader, unlabeled_loader, val_loader, test_loader, finet
             del t_logits
 
             # Teacher UDA loss
-            t_loss_l = criterion(t_logits_l, targets) / \
-                args.accumulation_steps
+            t_loss_l = criterion(t_logits_l, targets)
 
             t_loss_u = torch.mean(F.smooth_l1_loss(
-                t_logits_uw, t_logits_us)) / args.accumulation_steps
-            # t_loss_u = torch.mean(diff_clipped) / args.accumulation_steps
-            weight_u = args.lambda_u * \
-                min(1., (step / args.accumulation_steps + 1) / args.uda_steps)
+                t_logits_uw, t_logits_us))
+
+            weight_u = args.lambda_u * min(1., (step + 1) / args.uda_steps)
             t_loss_uda = t_loss_l + weight_u * t_loss_u
 
             # Student model inference
@@ -538,10 +536,9 @@ def train(args, labeled_loader, unlabeled_loader, val_loader, test_loader, finet
 
             # Student loss
             s_loss_l_old = F.smooth_l1_loss(
-                s_logits_l.detach(), targets)/args.accumulation_steps
+                s_logits_l.detach(), targets)
 
-            s_loss = criterion(
-                s_logits_us, t_logits_us.detach())/args.accumulation_steps
+            s_loss = criterion(s_logits_us, t_logits_us.detach())
 
             # NaN 값을 검사하여 처리
             if torch.any(torch.isnan(s_loss)):
@@ -554,6 +551,8 @@ def train(args, labeled_loader, unlabeled_loader, val_loader, test_loader, finet
                 s_loss), torch.tensor(-1e9), s_loss)
 
             del s_logits
+
+        s_loss /= args.grad_accumulation_steps
 
         s_scaler.scale(s_loss).backward()
 
@@ -576,13 +575,13 @@ def train(args, labeled_loader, unlabeled_loader, val_loader, test_loader, finet
                 s_logits_l = student_model(images_l)
 
             s_loss_l_new = F.smooth_l1_loss(
-                s_logits_l.detach(), targets)/args.accumulation_steps
+                s_logits_l.detach(), targets)
             dot_product = s_loss_l_new - s_loss_l_old
 
             t_loss_mpl = dot_product * \
-                F.smooth_l1_loss(t_logits_us, s_logits_us.detach()) / \
-                args.accumulation_steps
+                F.smooth_l1_loss(t_logits_us, s_logits_us.detach())
             t_loss = t_loss_uda + t_loss_mpl
+            t_loss /= args.accumulation_steps
 
             if torch.any(torch.isnan(t_loss)):
                 print("s_loss contains NaN values.")
@@ -626,7 +625,7 @@ def train(args, labeled_loader, unlabeled_loader, val_loader, test_loader, finet
 
         pbar.set_description(
             f"Train Iter: {step+1:3}/{args.total_steps:3}. "
-            f"LR: {get_lr(s_optimizer)}. Data: {data_time.avg:.2f}s. "
+            f"LR: {get_lr(s_optimizer:.5f)}. Data: {data_time.avg:.2f}s. "
             f"Batch: {batch_time.avg:.2f}s. S_Loss: {s_losses.avg:.4f}. "
             f"T_Loss: {t_losses.avg:.4f}.  ")
         pbar.update()
@@ -793,12 +792,10 @@ def finetune(args, finetune_dataset, test_loader, model, criterion):
                 outputs = model(images)
                 loss = criterion(outputs, targets)
 
-            scaler.scale(loss/args.accumulation_steps).backward()
-
-            if (step+1) % args.accumulation_steps == 0:
-                scaler.step(optimizer)
-                scaler.update()
-                model.zero_grad()
+            scaler.scale(loss).backward()
+            scaler.step(optimizer)
+            scaler.update()
+            model.zero_grad()
 
             if args.world_size > 1:
                 loss = reduce_tensor(loss.detach(), args.world_size)

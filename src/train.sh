@@ -1,12 +1,10 @@
 #python -m torch.distributed.launch --nproc_per_node 2 
 
-# TEST_DATASET=("ShanghaiA" "ShanghaiB" "qnrf")
-# DATSET_INDEX=(-1 0 1 2)
-# MODE=("tain" "test")
+TEST_DATASET=("ShanghaiA" "ShanghaiB" "qnrf")
+DATSET_INDEX=(-1 0 1 2)
+MODE=("tain" "test")
 
-TEST_DATASET=("ShanghaiB")
-DATSET_INDEX=(1)
-MODE=("tain")
+
 
 for i in $DATSET_INDEX
 do
