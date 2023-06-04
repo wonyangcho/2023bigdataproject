@@ -180,7 +180,7 @@ def get_crowd(args):
 
             train_l_list.extend(labeled_list)
             train_ul_list.extend(unlabeled_list)
-            val_l_list.extend(unlabeled_list)
+            val_l_list.extend(val_labeled_list)
 
     for i, data_path in enumerate(test_dataset_paths):
 
@@ -197,6 +197,7 @@ def get_crowd(args):
 
     train_l_data = pre_data(train_l_list, args, train=True)
     train_ul_data = pre_data(train_ul_list, args, train=True)
+    val_l_data = pre_data(val_labeled_list, args, train=False)
     test_data = pre_data(test_l_list, args, train=False)
 
     if args.randaug:
@@ -232,7 +233,7 @@ def get_crowd(args):
     train_unlabeled_dataset = listDataset(train_ul_data, TransformMPL(
         args, mean=normal_mean, std=normal_std), train=True, args=args)
     val_labeled_dataset = listDataset(
-        test_data, transform_val, train=False, args=args)
+        val_l_data, transform_val, train=False, args=args)
     test_dataset = listDataset(
         test_data, transform_val, train=False, args=args)
 
