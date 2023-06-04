@@ -552,7 +552,7 @@ def train(args, labeled_loader, unlabeled_loader, val_loader, test_loader, finet
 
             del s_logits
 
-        s_loss /= args.grad_accumulation_steps
+        s_loss /= args.accumulation_steps
 
         s_scaler.scale(s_loss).backward()
 
