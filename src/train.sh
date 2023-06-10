@@ -1,7 +1,7 @@
 #!/bin/bash
 
 TEST_DATASET=("ShanghaiA" "ShanghaiB" "qnrf")
-DATSET_INDEX=(0 1 2)
+DATSET_INDEX=(2 1 0)
 MODE=("train" "test")
 
 for i in "${DATSET_INDEX[@]}"
@@ -19,8 +19,8 @@ do
             --dataset crowd \
             --num_labeled 10000 \
             --expand_labels \
-            --total_steps 300000 \
-            --eval_step 1000 \
+            --total_steps 150000 \
+            --eval_step 500 \
             --randaug 2 16 \
             --batch_size 4 \
             --teacher_lr 1e-5 \
@@ -32,12 +32,12 @@ do
             --temperature 0.7 \
             --threshold 0.6 \
             --lambda_u 8 \
-            --warmup_steps 5000 \
-            --uda_steps 5000 \
-            --student_wait_steps 3000 \
+            --warmup_steps 2500 \
+            --uda_steps 2500 \
+            --student_wait_steps 1500 \
             --teacher_dropout 0.2 \
             --student_dropout 0.2 \
-            --finetune_epochs 625 \
+            --finetune_epochs 1000 \
             --finetune_batch_size 8 \
             --finetune_lr 1e-5 \
             --finetune_weight_decay 0 \
