@@ -519,8 +519,7 @@ def train(args, labeled_loader, unlabeled_loader, val_loader, test_loader, finet
             # Teacher UDA loss
             t_loss_l = criterion(t_logits_l, targets)
 
-            t_loss_u = torch.mean(F.smooth_l1_loss(
-                t_logits_uw, t_logits_us))
+            t_loss_u = F.smooth_l1_loss(t_logits_uw, t_logits_us)
 
             weight_u = args.lambda_u * min(1., (step + 1) / args.uda_steps)
             t_loss_uda = t_loss_l + weight_u * t_loss_u
