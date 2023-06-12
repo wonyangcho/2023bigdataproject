@@ -155,6 +155,9 @@ def get_crowd(args):
 
     if args.dataset_index != -1:
         train_dataset_paths = [train_dataset_paths[args.dataset_index]]
+
+        print(f"train_dataset_paths: {train_dataset_paths}")
+
         train_labeled_nums = [train_labeled_nums[args.dataset_index]]
         train_unlabeled_nums = [train_unlabeled_nums[args.dataset_index]]
         val_labeled_nums = [val_labeled_nums[args.dataset_index]]
@@ -178,6 +181,8 @@ def get_crowd(args):
             train_l_list.extend(labeled_list)
             train_ul_list.extend(unlabeled_list)
             val_l_list.extend(val_labeled_list)
+
+    print(f"test_dataset_paths: {test_dataset_paths}")
 
     for i, data_path in enumerate(test_dataset_paths):
 
