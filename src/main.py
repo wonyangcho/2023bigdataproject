@@ -519,7 +519,8 @@ def train(args, labeled_loader, unlabeled_loader, val_loader, test_loader, finet
             # Teacher UDA loss
             t_loss_l = criterion(t_logits_l, targets)
 
-            t_loss_u = F.smooth_l1_loss(t_logits_uw, t_logits_us)
+            t_loss_u = F.smooth_l1_loss(
+                t_logits_uw, t_logits_us, reduction='sum')
 
             weight_u = args.lambda_u * min(1., (step + 1) / args.uda_steps)
             t_loss_uda = t_loss_l + weight_u * t_loss_u
@@ -535,7 +536,7 @@ def train(args, labeled_loader, unlabeled_loader, val_loader, test_loader, finet
 
             # Student loss
             s_loss_l_old = F.smooth_l1_loss(
-                s_logits_l.detach(), targets)
+                s_logits_l.detach(), targets, reduction='sum')
 
             s_loss = criterion(s_logits_us, t_logits_us.detach())
 
@@ -574,11 +575,12 @@ def train(args, labeled_loader, unlabeled_loader, val_loader, test_loader, finet
                 s_logits_l = student_model(images_l)
 
             s_loss_l_new = F.smooth_l1_loss(
-                s_logits_l.detach(), targets)
+                s_logits_l.detach(), targets, reduction='sum')
             dot_product = s_loss_l_new - s_loss_l_old
 
             t_loss_mpl = dot_product * \
-                F.smooth_l1_loss(t_logits_us, s_logits_us.detach())
+                F.smooth_l1_loss(
+                    t_logits_us, s_logits_us.detach(), reduction='sum')
             t_loss = t_loss_uda + t_loss_mpl
             t_loss /= args.accumulation_steps
 
