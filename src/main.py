@@ -288,21 +288,21 @@ def main():
             {'params': teacher_model.parameters(), 'lr': args.student_lr},
         ], lr=args.student_lr, weight_decay=args.weight_decay)
 
-    t_optimizer = optim.SGD(teacher_model.parameters(),
-                            lr=args.teacher_lr,
-                            momentum=args.momentum,
-                            nesterov=args.nesterov)
-    s_optimizer = optim.SGD(student_model.parameters(),
-                            lr=args.student_lr,
-                            momentum=args.momentum,
-                            nesterov=args.nesterov)
+    # t_optimizer = optim.SGD(teacher_model.parameters(),
+    #                         lr=args.teacher_lr,
+    #                         momentum=args.momentum,
+    #                         nesterov=args.nesterov)
+    # s_optimizer = optim.SGD(student_model.parameters(),
+    #                         lr=args.student_lr,
+    #                         momentum=args.momentum,
+    #                         nesterov=args.nesterov)
 
-    # t_optimizer = Lion(teacher_model.parameters(),
-    #                    lr=args.teacher_lr,
-    #                    weight_decay=args.weight_decay)
-    # s_optimizer = Lion(student_model.parameters(),
-    #                    lr=args.student_lr,
-    #                    weight_decay=args.weight_decay)
+    t_optimizer = Lion(teacher_model.parameters(),
+                       lr=args.teacher_lr,
+                       weight_decay=args.weight_decay)
+    s_optimizer = Lion(student_model.parameters(),
+                       lr=args.student_lr,
+                       weight_decay=args.weight_decay)
 
     if args.use_lr_scheduler:
         args.warmup_steps = args.warmup_steps
@@ -529,19 +529,20 @@ def train(args, labeled_loader, unlabeled_loader, val_loader, test_loader, finet
             t_loss_uda = t_loss_l + weight_u * t_loss_u
 
             # Student model inference
-            s_images = torch.cat((images_l, images_us))
+            s_images = torch.cat((images_l, images_uw, images_us))
 
             s_logits = student_model(s_images)
             check_nan_parameters(student_model)
 
             s_logits_l = s_logits[:batch_size]
-            s_logits_us = s_logits[batch_size:]
+            s_logits_uw, s_logits_us = s_logits[batch_size:].chunk(2)
 
             # Student loss
             s_loss_l_old = F.smooth_l1_loss(
                 s_logits_l.detach(), targets, reduction='sum', beta=2)
 
-            s_loss = criterion(s_logits_us, t_logits_us.detach())
+            s_loss = args.temperature*criterion(s_logits_uw, t_logits_uw.detach(
+            )) + (1-args.temperature)*criterion(s_logits_us, t_logits_us.detach())
 
             # NaN 값을 검사하여 처리
             if torch.any(torch.isnan(s_loss)):
@@ -582,8 +583,10 @@ def train(args, labeled_loader, unlabeled_loader, val_loader, test_loader, finet
             dot_product = s_loss_l_new - s_loss_l_old
 
             t_loss_mpl = dot_product * \
-                F.smooth_l1_loss(
-                    t_logits_us, s_logits_us.detach(), reduction='sum', beta=2)
+                (args.temperature * F.smooth_l1_loss(
+                    t_logits_uw, t_logits_uw.detach(), reduction='sum', beta=2) +
+                    (1-args.temperature)*F.smooth_l1_loss(
+                    t_logits_us, t_logits_us.detach(), reduction='sum', beta=2))
             t_loss = t_loss_uda + t_loss_mpl
             t_loss /= args.accumulation_steps
 
@@ -754,15 +757,15 @@ def finetune(args, finetune_dataset, test_loader, model, criterion):
         num_workers=args.workers,
         pin_memory=True)
 
-    # optimizer = Lion(model.parameters(),
-    #                  lr=args.finetune_lr,
-    #                  weight_decay=args.weight_decay)
+    optimizer = Lion(model.parameters(),
+                     lr=args.finetune_lr,
+                     weight_decay=args.weight_decay)
 
-    optimizer = optim.SGD(model.parameters(),
-                          lr=args.finetune_lr,
-                          momentum=args.finetune_momentum,
-                          weight_decay=args.finetune_weight_decay,
-                          nesterov=True)
+    # optimizer = optim.SGD(model.parameters(),
+    #                       lr=args.finetune_lr,
+    #                       momentum=args.finetune_momentum,
+    #                       weight_decay=args.finetune_weight_decay,
+    #                       nesterov=True)
 
     scaler = amp.GradScaler(enabled=args.amp)
 
@@ -773,7 +776,7 @@ def finetune(args, finetune_dataset, test_loader, model, criterion):
     model.zero_grad()
     for epoch in range(args.finetune_epochs):
         if args.world_size > 1:
-            labeled_loader.sampler.set_epoch(epoch + 624)
+            labeled_loader.sampler.set_epoch(epoch + args.finetune_epochs)
 
         batch_time = AverageMeter()
         data_time = AverageMeter()
