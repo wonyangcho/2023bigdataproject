@@ -22,13 +22,13 @@ do
             --total_steps 50000 \
             --eval_step 1000 \
             --randaug 2 16 \
-            --batch_size 4 \
+            --batch_size 2 \
             --teacher_lr 1e-4 \
             --student_lr 1e-4 \
             --weight_decay 5e-4 \
             --ema 0.995 \
             --nesterov \
-            --mu 3 \
+            --mu 2 \
             --temperature 0.7 \
             --threshold 0.6 \
             --lambda_u 8 \
@@ -37,7 +37,7 @@ do
             --student_wait_steps 100 \
             --teacher_dropout 0.2 \
             --student_dropout 0.2 \
-            --finetune_epochs 100 \
+            --finetune_epochs 625 \
             --finetune_batch_size 16 \
             --finetune_lr 1e-4 \
             --finetune_weight_decay 0 \
