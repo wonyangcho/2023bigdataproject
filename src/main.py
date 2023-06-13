@@ -27,7 +27,7 @@ import numpy as np
 import torch
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 from lion_pytorch import Lion
-torch.autograd.set_detect_anomaly(True)
+# torch.autograd.set_detect_anomaly(True)
 
 
 logger = logging.getLogger(__name__)
@@ -72,8 +72,6 @@ parser.add_argument('--ema', default=0, type=float, help='EMA decay rate')
 parser.add_argument('--warmup_steps', default=0, type=int, help='warmup steps')
 parser.add_argument('--student_wait_steps', default=0,
                     type=int, help='warmup steps')
-# parser.add_argument('--grad-clip', default=1e9, type=float,
-#                     help='gradient norm clipping')
 parser.add_argument('--grad_clip', default=0., type=float,
                     help='gradient norm clipping')
 parser.add_argument('--resume', default='', type=str,
@@ -145,9 +143,6 @@ parser.add_argument("--use_lr_scheduler", action="store_true",
 
 parser.add_argument("--pretrained", action="store_true",
                     help="use pretrained")
-
-parser.add_argument("--accumulation_steps", default=1, type=int,
-                    help="gradient accumulation step")
 
 
 def set_seed(args):
@@ -429,7 +424,11 @@ def train(args, labeled_loader, unlabeled_loader, val_loader, test_loader, finet
           teacher_model, student_model, avg_student_model,
           t_optimizer, s_optimizer, t_scheduler, s_scheduler, t_scaler, s_scaler, criterion):
 
+    teacher_model.train()
+
     finetune(args, finetune_dataset, test_loader, teacher_model, criterion)
+
+    args.best_loss = float('inf')
 
     if args.world_size > 1:
         labeled_epoch = 0
@@ -439,18 +438,6 @@ def train(args, labeled_loader, unlabeled_loader, val_loader, test_loader, finet
 
     labeled_iter = iter(labeled_loader)
     unlabeled_iter = iter(unlabeled_loader)
-
-    for name, param in student_model.named_parameters():
-        if torch.isnan(param).any():
-            print(f"NaN values found in parameter '{name}'")
-            if torch.isnan(param).any():
-                init.normal_(param.data)
-
-    for name, param in teacher_model.named_parameters():
-        if torch.isnan(param).any():
-            print(f"NaN values found in parameter '{name}'")
-            if torch.isnan(param).any():
-                init.normal_(param.data)
 
     for step in range(args.start_step, args.total_steps):
 
@@ -519,7 +506,7 @@ def train(args, labeled_loader, unlabeled_loader, val_loader, test_loader, finet
             t_logits = teacher_model(t_images)
             t_logits_l = t_logits[:batch_size]
             t_logits_uw, t_logits_us = t_logits[batch_size:].chunk(2)
-            del t_logits
+            del t_logits, t_images
 
             # Teacher UDA loss
             t_loss_l = criterion(t_logits_l, targets)
@@ -531,33 +518,20 @@ def train(args, labeled_loader, unlabeled_loader, val_loader, test_loader, finet
             t_loss_uda = t_loss_l + weight_u * t_loss_u
 
             # Student model inference
-            s_images = torch.cat((images_l, images_uw, images_us))
+            s_images = torch.cat((images_l, images_us))
 
             s_logits = student_model(s_images)
-            check_nan_parameters(student_model)
 
             s_logits_l = s_logits[:batch_size]
-            s_logits_uw, s_logits_us = s_logits[batch_size:].chunk(2)
+            s_logits_us = s_logits[batch_size:]
+
+            del s_logits, s_images
 
             # Student loss
             s_loss_l_old = F.l1_loss(
                 s_logits_l.detach(), targets, reduction='sum')
 
             s_loss = criterion(s_logits_us, t_logits_uw.detach())
-
-            # NaN 값을 검사하여 처리
-            if torch.any(torch.isnan(s_loss)):
-                print("s_loss contains NaN values.")
-                # NaN 값을 작은 음수 값으로 대체
-                s_loss = torch.nan_to_num(s_loss, nan=-1e9)
-
-            # posinf와 neginf 값을 작은 음수 값으로 대체
-            s_loss = torch.where(torch.isposinf(s_loss) | torch.isneginf(
-                s_loss), torch.tensor(-1e9), s_loss)
-
-            del s_logits
-
-        s_loss /= args.accumulation_steps
 
         s_scaler.scale(s_loss).backward()
 
@@ -586,14 +560,6 @@ def train(args, labeled_loader, unlabeled_loader, val_loader, test_loader, finet
             t_loss_mpl = dot_product * F.smooth_l1_loss(
                 t_logits_us, t_logits_uw.detach(), reduction='sum')
             t_loss = t_loss_uda + t_loss_mpl
-            t_loss /= args.accumulation_steps
-
-            if torch.any(torch.isnan(t_loss)):
-                print("s_loss contains NaN values.")
-                # NaN 값을 제거하거나 다른 값으로 대체할 수 있는 처리를 수행합니다.
-                # NaN 값을 0으로 대체합니다.
-                t_loss = torch.nan_to_num(
-                    t_loss, nan=0.0, posinf=0.0, neginf=0.0)
 
         t_scaler.scale(t_loss).backward()
 
@@ -625,8 +591,6 @@ def train(args, labeled_loader, unlabeled_loader, val_loader, test_loader, finet
 
         batch_time.update(time.time() - end)
         end = time.time()
-
-        batch_time.update(time.time() - end)
 
         pbar.set_description(
             f"Train Iter: {step+1:3}/{args.total_steps:3}. "
@@ -746,7 +710,7 @@ def validate(data_loader, model, args):
     return mae
 
 
-def finetune(args, finetune_dataset, test_loader, model, criterion):
+def finetune(args, finetune_dataset, test_loader, model, criterion, save_ckpt=True):
     model.drop = nn.Identity()
     train_sampler = RandomSampler if args.local_rank == -1 else DistributedSampler
     labeled_loader = DataLoader(
@@ -825,13 +789,14 @@ def finetune(args, finetune_dataset, test_loader, model, criterion):
             logger.info(f"loss: {test_loss:.2f}")
             logger.info(f"best_loss: {args.best_loss:.2f}")
 
-            save_checkpoint(args, {
-                'step': step + 1,
-                'best_loss': args.best_loss,
-                'student_state_dict': model.state_dict(),
-                'avg_state_dict': None,
-                'student_optimizer': optimizer.state_dict(),
-            }, is_best, finetune=True)
+            if save_ckpt:
+                save_checkpoint(args, {
+                    'step': step + 1,
+                    'best_loss': args.best_loss,
+                    'student_state_dict': model.state_dict(),
+                    'avg_state_dict': None,
+                    'student_optimizer': optimizer.state_dict(),
+                }, is_best, finetune=True)
         if args.local_rank in [-1, 0]:
             args.writer.add_scalar("result/finetune_loss", args.best_loss)
             web_logger.log(args, {"result/finetune_loss": args.best_loss})

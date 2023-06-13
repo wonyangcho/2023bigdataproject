@@ -28,7 +28,7 @@ do
             --weight_decay 5e-4 \
             --ema 0.995 \
             --nesterov \
-            --mu 1 \
+            --mu 3 \
             --temperature 0.7 \
             --threshold 0.6 \
             --lambda_u 8 \
@@ -50,10 +50,10 @@ do
             --description "${DESC}" \
             --do_crop \
             --use_lr_scheduler \
-            --accumulation_steps 1 \
             --pretrained \
             --dataset_index "${DATSET_INDEX}" \
             --use_wandb \
+            --amp
             $([[ $m == "test" ]] && echo "--evaluate")
     done
 done
