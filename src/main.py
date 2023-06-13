@@ -429,6 +429,8 @@ def train(args, labeled_loader, unlabeled_loader, val_loader, test_loader, finet
           teacher_model, student_model, avg_student_model,
           t_optimizer, s_optimizer, t_scheduler, s_scheduler, t_scaler, s_scaler, criterion):
 
+    finetune(args, finetune_dataset, test_loader, teacher_model, criterion)
+
     if args.world_size > 1:
         labeled_epoch = 0
         unlabeled_epoch = 0
@@ -523,7 +525,7 @@ def train(args, labeled_loader, unlabeled_loader, val_loader, test_loader, finet
             t_loss_l = criterion(t_logits_l, targets)
 
             t_loss_u = F.smooth_l1_loss(
-                t_logits_uw, t_logits_us, reduction='sum', beta=2)
+                t_logits_uw, t_logits_us, reduction='sum')
 
             weight_u = args.lambda_u * min(1., (step + 1) / args.uda_steps)
             t_loss_uda = t_loss_l + weight_u * t_loss_u
@@ -538,11 +540,10 @@ def train(args, labeled_loader, unlabeled_loader, val_loader, test_loader, finet
             s_logits_uw, s_logits_us = s_logits[batch_size:].chunk(2)
 
             # Student loss
-            s_loss_l_old = F.smooth_l1_loss(
-                s_logits_l.detach(), targets, reduction='sum', beta=2)
+            s_loss_l_old = F.l1_loss(
+                s_logits_l.detach(), targets, reduction='sum')
 
-            s_loss = args.temperature*criterion(s_logits_uw, t_logits_uw.detach(
-            )) + (1-args.temperature)*criterion(s_logits_us, t_logits_us.detach())
+            s_loss = criterion(s_logits_us, t_logits_uw.detach())
 
             # NaN 값을 검사하여 처리
             if torch.any(torch.isnan(s_loss)):
@@ -578,15 +579,12 @@ def train(args, labeled_loader, unlabeled_loader, val_loader, test_loader, finet
             with torch.no_grad():
                 s_logits_l = student_model(images_l)
 
-            s_loss_l_new = F.smooth_l1_loss(
-                s_logits_l.detach(), targets, reduction='sum', beta=2)
-            dot_product = s_loss_l_new - s_loss_l_old
+            s_loss_l_new = F.l1_loss(
+                s_logits_l.detach(), targets, reduction='sum')
+            dot_product = s_loss_l_old - s_loss_l_new
 
-            t_loss_mpl = dot_product * \
-                (args.temperature * F.smooth_l1_loss(
-                    t_logits_uw, t_logits_uw.detach(), reduction='sum', beta=2) +
-                    (1-args.temperature)*F.smooth_l1_loss(
-                    t_logits_us, t_logits_us.detach(), reduction='sum', beta=2))
+            t_loss_mpl = dot_product * F.smooth_l1_loss(
+                t_logits_us, t_logits_uw.detach(), reduction='sum')
             t_loss = t_loss_uda + t_loss_mpl
             t_loss /= args.accumulation_steps
 

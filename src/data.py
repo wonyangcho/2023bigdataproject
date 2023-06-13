@@ -40,7 +40,7 @@ class TransformMPL(object):
 
         self.ori = transforms.Compose([
             transforms.Resize((rw, rh)),
-            transforms.RandomHorizontalFlip(),
+            # transforms.RandomHorizontalFlip(),
 
         ])
         self.aug = transforms.Compose([
@@ -212,14 +212,14 @@ def get_crowd(args):
 
     transform_labeled = transforms.Compose([
         transforms.Resize((rw, rh)),
-        transforms.RandomHorizontalFlip(),
+        # transforms.RandomHorizontalFlip(),
         transforms.ToTensor(),
         transforms.Normalize(mean=normal_mean, std=normal_std)])
     transform_finetune = transforms.Compose([
         transforms.Resize((rw, rh)),
-        transforms.RandomHorizontalFlip(),
+        # transforms.RandomHorizontalFlip(),
 
-        RandAugment(n=n, m=m),
+        # RandAugment(n=n, m=m),
         transforms.ToTensor(),
         transforms.Normalize(mean=normal_mean, std=normal_std)])
 

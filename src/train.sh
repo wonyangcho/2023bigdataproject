@@ -19,12 +19,12 @@ do
             --dataset crowd \
             --num_labeled 10000 \
             --expand_labels \
-            --total_steps 10000 \
-            --eval_step 30 \
+            --total_steps 50000 \
+            --eval_step 1000 \
             --randaug 2 16 \
             --batch_size 4 \
-            --teacher_lr 1e-5 \
-            --student_lr 1e-5 \
+            --teacher_lr 1e-4 \
+            --student_lr 1e-4 \
             --weight_decay 5e-4 \
             --ema 0.995 \
             --nesterov \
@@ -37,9 +37,9 @@ do
             --student_wait_steps 100 \
             --teacher_dropout 0.2 \
             --student_dropout 0.2 \
-            --finetune_epochs 1000 \
-            --finetune_batch_size 8 \
-            --finetune_lr 1e-5 \
+            --finetune_epochs 100 \
+            --finetune_batch_size 16 \
+            --finetune_lr 1e-4 \
             --finetune_weight_decay 0 \
             --finetune_momentum 0.9 \
             --home "/work/wycho/project/2023bigdataproject/src/" \
