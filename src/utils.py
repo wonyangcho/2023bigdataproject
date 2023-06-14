@@ -58,12 +58,9 @@ def model_load_state_dict(model, state_dict):
 def save_checkpoint(args, state, is_best, finetune=False):
     os.makedirs(args.save_path, exist_ok=True)
     if finetune:
-        name = f'{args.name}_finetune'
+        name = f'{args.name}_{args.dataset_index}_finetune'
     else:
-        if args.dataset_index == -1:
-            name = args.name
-        else:
-            name = f"{args.name}_{args.dataset_index}"
+        name = f"{args.name}_{args.dataset_index}"
     filename = f'{args.save_path}/{name}_last.pth.tar'
     torch.save(state, filename, _use_new_zipfile_serialization=False)
     if is_best:

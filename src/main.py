@@ -22,7 +22,7 @@ import math
 import os
 import random
 import time
-
+import torch.backends.cudnn as cudnn
 import numpy as np
 import torch
 from torch.optim.lr_scheduler import ReduceLROnPlateau
@@ -150,6 +150,8 @@ def set_seed(args):
     np.random.seed(args.seed)
     torch.manual_seed(args.seed)
     torch.cuda.manual_seed_all(args.seed)
+    cudnn.deterministic = True
+    cudnn.benchmark = True
 
 
 def get_cosine_schedule_with_warmup(optimizer,
@@ -292,12 +294,19 @@ def main():
     #                         momentum=args.momentum,
     #                         nesterov=args.nesterov)
 
-    t_optimizer = Lion(teacher_model.parameters(),
-                       lr=args.teacher_lr,
-                       weight_decay=args.weight_decay)
-    s_optimizer = Lion(student_model.parameters(),
-                       lr=args.student_lr,
-                       weight_decay=args.weight_decay)
+    # t_optimizer = Lion(teacher_model.parameters(),
+    #                    lr=args.teacher_lr,
+    #                    weight_decay=args.weight_decay)
+    # s_optimizer = Lion(student_model.parameters(),
+    #                    lr=args.student_lr,
+    #                    weight_decay=args.weight_decay)
+
+    t_optimizer = optim.Adam(teacher_model.parameters(),
+                             lr=args.teacher_lr,
+                             weight_decay=args.weight_decay)
+    s_optimizer = optim.Adam(student_model.parameters(),
+                             lr=args.student_lr,
+                             weight_decay=args.weight_decay)
 
     if args.use_lr_scheduler:
         args.warmup_steps = args.warmup_steps
@@ -314,6 +323,9 @@ def main():
                                                       args.warmup_steps,
                                                       args.total_steps,
                                                       args.student_wait_steps,)
+        t_scheduler = None
+        s_scheduler = None
+
         # t_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
         #     t_optimizer, T_max=40, eta_min=1e-6)
         # s_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
@@ -384,6 +396,19 @@ def main():
         if s_scheduler is not None:
             del s_scheduler
 
+        name = f"{args.name}_{args.dataset_index}"
+
+        ckpt_name = f'{args.save_path}/{name}_best.pth.tar'
+
+        loc = f'cuda:{args.gpu}'
+        checkpoint = torch.load(ckpt_name, map_location=loc)
+        logger.info(f"=> loading checkpoint '{ckpt_name}'")
+        if checkpoint['avg_state_dict'] is not None:
+            model_load_state_dict(student_model, checkpoint['avg_state_dict'])
+        else:
+            model_load_state_dict(
+                student_model, checkpoint['student_state_dict'])
+
         finetune(args, finetune_dataset, test_loader, student_model, criterion)
         return
 
@@ -395,6 +420,19 @@ def main():
             del t_scheduler
         if s_scheduler is not None:
             del s_scheduler
+
+        name = f"{args.name}_{args.dataset_index}_finetune"
+
+        ckpt_name = f'{args.save_path}/{name}_best.pth.tar'
+
+        loc = f'cuda:{args.gpu}'
+        checkpoint = torch.load(ckpt_name, map_location=loc)
+        logger.info(f"=> loading checkpoint '{ckpt_name}'")
+        if checkpoint['avg_state_dict'] is not None:
+            model_load_state_dict(student_model, checkpoint['avg_state_dict'])
+        else:
+            model_load_state_dict(
+                student_model, checkpoint['student_state_dict'])
 
         validate(test_loader, student_model, args)
         return
@@ -426,7 +464,19 @@ def train(args, labeled_loader, unlabeled_loader, val_loader, test_loader, finet
 
     teacher_model.train()
 
-    finetune(args, finetune_dataset, test_loader, teacher_model, criterion)
+    finetune(args, finetune_dataset, val_loader,
+             teacher_model, criterion)
+
+    name = f"{args.name}_{args.dataset_index}"
+
+    ckpt_name = f'{args.save_path}/{name}_best.pth.tar'
+
+    loc = f'cuda:{args.gpu}'
+    checkpoint = torch.load(ckpt_name, map_location=loc)
+    logger.info(f"=> loading checkpoint '{ckpt_name}'")
+
+    model_load_state_dict(
+        teacher_model, checkpoint['student_state_dict'])
 
     args.best_loss = float('inf')
 
@@ -511,8 +561,24 @@ def train(args, labeled_loader, unlabeled_loader, val_loader, test_loader, finet
             # Teacher UDA loss
             t_loss_l = criterion(t_logits_l, targets)
 
-            t_loss_u = F.smooth_l1_loss(
-                t_logits_uw, t_logits_us, reduction='sum')
+            # t_loss_u = F.smooth_l1_loss(
+            #     t_logits_uw, t_logits_us, reduction='sum')
+
+            pseudo_count_uw = t_logits_uw.detach()
+
+            # Define threshold for pseudo-label confidence based on prediction difference
+            # Set a suitable threshold value
+            threshold = torch.tensor([args.threshold]).to(args.device)
+
+            # Compute the prediction difference
+            pred_diff = torch.abs(
+                pseudo_count_uw - t_logits_us.detach()).to(args.device)
+
+            # Mask uncertain pseudo-labels
+            mask = (pred_diff <= threshold).float()
+
+            t_loss_u = torch.mean(
+                torch.abs((pseudo_count_uw - t_logits_us)) * mask)
 
             weight_u = args.lambda_u * min(1., (step + 1) / args.uda_steps)
             t_loss_uda = t_loss_l + weight_u * t_loss_u
@@ -646,8 +712,14 @@ def train(args, labeled_loader, unlabeled_loader, val_loader, test_loader, finet
 #         wandb.log({"result/test_acc@1": args.best_top1})
 
     # finetune
-    del t_scaler, t_scheduler, t_optimizer, teacher_model, labeled_loader, unlabeled_loader
+    del t_scaler, t_optimizer, teacher_model, labeled_loader, unlabeled_loader
     del s_scaler, s_scheduler, s_optimizer
+
+    if t_scheduler:
+        del t_scheduler
+
+    if s_scheduler:
+        del s_scheduler
 
     if args.dataset_index == -1:
         name = args.name
@@ -663,7 +735,7 @@ def train(args, labeled_loader, unlabeled_loader, val_loader, test_loader, finet
         model_load_state_dict(student_model, checkpoint['avg_state_dict'])
     else:
         model_load_state_dict(student_model, checkpoint['student_state_dict'])
-    finetune(args, finetune_dataset, test_loader, student_model, criterion)
+    finetune(args, finetune_dataset, val_loader, student_model, criterion)
 
 
 def validate(data_loader, model, args):
@@ -719,9 +791,13 @@ def finetune(args, finetune_dataset, test_loader, model, criterion, save_ckpt=Tr
         num_workers=args.workers,
         pin_memory=True)
 
-    optimizer = Lion(model.parameters(),
-                     lr=args.finetune_lr,
-                     weight_decay=args.weight_decay)
+    # optimizer = Lion(model.parameters(),
+    #                  lr=args.finetune_lr,
+    #                  weight_decay=args.weight_decay)
+
+    optimizer = optim.Adam(model.parameters(),
+                           lr=args.finetune_lr,
+                           weight_decay=args.weight_decay)
 
     # optimizer = optim.SGD(model.parameters(),
     #                       lr=args.finetune_lr,
@@ -779,8 +855,9 @@ def finetune(args, finetune_dataset, test_loader, model, criterion, save_ckpt=Tr
 
             test_loss = validate(test_loader, model, args)
 
-            web_logger.log(args, {"finetune/train_loss": losses.avg})
-            web_logger.log(args, {"finetune/test_loss": test_loss})
+            if save_ckpt:
+                web_logger.log(args, {"finetune/train_loss": losses.avg})
+                web_logger.log(args, {"finetune/test_loss": test_loss})
 
             is_best = test_loss < args.best_loss
             if is_best:
@@ -798,9 +875,10 @@ def finetune(args, finetune_dataset, test_loader, model, criterion, save_ckpt=Tr
                     'student_optimizer': optimizer.state_dict(),
                 }, is_best, finetune=True)
         if args.local_rank in [-1, 0]:
-            args.writer.add_scalar("result/finetune_loss", args.best_loss)
-            web_logger.log(args, {"result/finetune_loss": args.best_loss})
-#             wandb.log({"result/finetune_acc@1": args.best_top1})
+            if save_ckpt:
+                args.writer.add_scalar("result/finetune_loss", args.best_loss)
+                web_logger.log(args, {"result/finetune_loss": args.best_loss})
+    #             wandb.log({"result/finetune_acc@1": args.best_top1})
     return
 
 

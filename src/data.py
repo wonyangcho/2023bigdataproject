@@ -45,8 +45,8 @@ class TransformMPL(object):
         ])
         self.aug = transforms.Compose([
             transforms.Resize((rw, rh)),
-            transforms.RandomHorizontalFlip(),
             RandAugment(n=n, m=m)])
+
         self.normalize = transforms.Compose([
             transforms.ToTensor(),
             transforms.Normalize(mean=mean, std=std)])
@@ -149,14 +149,15 @@ def get_crowd(args):
 
     test_dataset_paths = [args.test_dataset]
 
-    train_labeled_nums = [30, 30, 120]
+    train_labeled_nums = [30, 40, 120]
     train_unlabeled_nums = [210, 280, 721]
-    val_labeled_nums = [60, 90, 240]
+    val_labeled_nums = [60, 80, 240]
 
     if args.dataset_index != -1:
         train_dataset_paths = [train_dataset_paths[args.dataset_index]]
 
-        print(f"train_dataset_paths: {train_dataset_paths}")
+        print(
+            f"train_dataset_paths: {train_dataset_paths} {args.dataset_index}")
 
         train_labeled_nums = [train_labeled_nums[args.dataset_index]]
         train_unlabeled_nums = [train_unlabeled_nums[args.dataset_index]]
@@ -211,20 +212,20 @@ def get_crowd(args):
     rh = int(args.h * args.resize)
 
     transform_labeled = transforms.Compose([
-        transforms.Resize((rw, rh)),
+        # transforms.Resize((rw, rh)),
         # transforms.RandomHorizontalFlip(),
+        # RandAugment(n=n, m=m),
         transforms.ToTensor(),
         transforms.Normalize(mean=normal_mean, std=normal_std)])
     transform_finetune = transforms.Compose([
-        transforms.Resize((rw, rh)),
+        # transforms.Resize((rw, rh)),
         # transforms.RandomHorizontalFlip(),
-
         # RandAugment(n=n, m=m),
         transforms.ToTensor(),
         transforms.Normalize(mean=normal_mean, std=normal_std)])
 
     transform_val = transforms.Compose([
-        transforms.Resize((rw, rh)),
+        # transforms.Resize((rw, rh)),
         transforms.ToTensor(),
         transforms.Normalize(mean=normal_mean, std=normal_std)])
 
