@@ -428,11 +428,8 @@ def main():
         loc = f'cuda:{args.gpu}'
         checkpoint = torch.load(ckpt_name, map_location=loc)
         logger.info(f"=> loading checkpoint '{ckpt_name}'")
-        if checkpoint['avg_state_dict'] is not None:
-            model_load_state_dict(student_model, checkpoint['avg_state_dict'])
-        else:
-            model_load_state_dict(
-                student_model, checkpoint['student_state_dict'])
+        model_load_state_dict(
+            student_model, checkpoint['student_state_dict'])
 
         validate(test_loader, student_model, args)
         return
