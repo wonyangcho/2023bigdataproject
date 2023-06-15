@@ -258,7 +258,7 @@ class SoftAugment(object):
     def __init__(self, n, m, resample_mode=PIL.Image.BICUBIC):
         global RESAMPLE_MODE
         RESAMPLE_MODE = resample_mode
-        self.n = n
+        self.n = int(n)
         self.m = m
         self.augment_pool = soft_augment_pool()
 

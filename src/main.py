@@ -144,6 +144,9 @@ parser.add_argument("--use_lr_scheduler", action="store_true",
 parser.add_argument("--pretrained", action="store_true",
                     help="use pretrained")
 
+parser.add_argument("--aug", action="store_true",
+                    help="use augmentation")
+
 
 def set_seed(args):
     random.seed(args.seed)
@@ -517,8 +520,8 @@ def train(args, labeled_loader, unlabeled_loader, val_loader, test_loader, finet
             labeled_iter = iter(labeled_loader)
             images_l, targets = next(labeled_iter)
 
-        images_l = images_l.float()
-        targets = targets.float()
+        # images_l = images_l.float()
+        # targets = targets.float()
 
         try:
             # error occurs ↓
@@ -533,7 +536,7 @@ def train(args, labeled_loader, unlabeled_loader, val_loader, test_loader, finet
             # (images_uw, images_us), _ = unlabeled_iter.next()
             (images_uw, images_us), _ = next(unlabeled_iter)
 
-        targets = torch.unsqueeze(targets, dim=1)
+        targets = torch.unsqueeze(targets, dim=1).float()
 
         data_time.update(time.time() - end)
 
@@ -572,7 +575,7 @@ def train(args, labeled_loader, unlabeled_loader, val_loader, test_loader, finet
                 pseudo_count_uw - t_logits_us.detach()).to(args.device)
 
             # Mask uncertain pseudo-labels
-            mask = (pred_diff <= threshold).float()
+            mask = (pred_diff <= threshold)
 
             t_loss_u = torch.mean(
                 torch.abs((pseudo_count_uw - t_logits_us)) * mask)
@@ -759,7 +762,7 @@ def validate(data_loader, model, args):
             out1 = model(img)
             count = torch.sum(out1).item()
 
-        gt_count = torch.sum(gt_count).item()
+        gt_count = torch.sum(gt_count.float()).item()
         mae += abs(gt_count - count)
         mse += abs(gt_count - count) * abs(gt_count - count)
 
@@ -822,13 +825,13 @@ def finetune(args, finetune_dataset, test_loader, model, criterion, save_ckpt=Tr
             labeled_loader, disable=args.local_rank not in [-1, 0])
         for step, (images, targets) in enumerate(labeled_iter):
 
-            images = images.float()
-            targets = targets.float()
+            # images = images.float()
+            # targets = targets.float()
 
             data_time.update(time.time() - end)
             batch_size = images.shape[0]
             images = images.to(args.device)
-            targets = targets.to(args.device)
+            targets = targets.to(args.device).unsqueeze(1).float()
             with amp.autocast(enabled=args.amp):
 
                 outputs = model(images)

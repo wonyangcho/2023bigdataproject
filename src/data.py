@@ -7,7 +7,7 @@ from torchvision import datasets
 from torchvision import transforms
 from torchvision.transforms import InterpolationMode
 
-from augmentation import RandAugment
+from augmentation import RandAugment, SoftAugment
 
 import scipy.spatial
 from PIL import Image
@@ -45,7 +45,7 @@ class TransformMPL(object):
         ])
         self.aug = transforms.Compose([
             transforms.Resize((rw, rh)),
-            RandAugment(n=n, m=m)])
+            SoftAugment(n=n, m=m)])
 
         self.normalize = transforms.Compose([
             transforms.ToTensor(),
@@ -211,12 +211,22 @@ def get_crowd(args):
     rw = int(args.w * args.resize)
     rh = int(args.h * args.resize)
 
-    transform_labeled = transforms.Compose([
-        # transforms.Resize((rw, rh)),
-        # transforms.RandomHorizontalFlip(),
-        # RandAugment(n=n, m=m),
-        transforms.ToTensor(),
-        transforms.Normalize(mean=normal_mean, std=normal_std)])
+    if args.aug:
+        transform_labeled = transforms.Compose([
+            # transforms.Resize((rw, rh)),
+            # transforms.RandomHorizontalFlip(),
+            # RandAugment(n=n, m=m),
+            SoftAugment(n=n, m=m),
+            transforms.ToTensor(),
+            transforms.Normalize(mean=normal_mean, std=normal_std)])
+    else:
+        transform_labeled = transforms.Compose([
+            # transforms.Resize((rw, rh)),
+            # transforms.RandomHorizontalFlip(),
+            # RandAugment(n=n, m=m),
+            transforms.ToTensor(),
+            transforms.Normalize(mean=normal_mean, std=normal_std)])
+
     transform_finetune = transforms.Compose([
         # transforms.Resize((rw, rh)),
         # transforms.RandomHorizontalFlip(),
