@@ -14,6 +14,7 @@ do
     for i in "${DATSET_INDEX[@]}"
     do
         TEST_DATASET_NAME="${TEST_DATASET[$i]}"
+        EXP="${TAG}"
         AUGMENT=""
         if [ "${a}" = "aug" ]; then
             AUGMENT="--aug"
@@ -62,8 +63,8 @@ do
             --pretrained \
             --dataset_index "${i}" \
             --use_wandb \
-            --tag ${TAG} \ 
-            $AUGMENT \
+            ${AUGMENT} \
+            --tag "${EXP}" \
 
         DESC="test_${i}_${a}_fixmatch"
         TEST_DATASET_PATH="npydata/${TEST_DATASET_NAME}_test.npy" 
@@ -108,8 +109,8 @@ do
             --pretrained \
             --dataset_index "${i}" \
             --use_wandb \
-            --tag ${TAG} \
             --evaluate \
+            --tag "${EXP}" \
             
     done
 done
