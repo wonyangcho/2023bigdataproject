@@ -1,22 +1,26 @@
 #!/bin/bash
 
-TEST_DATASET=("ShanghaiA" "ShanghaiB" "qnrf")
-DATSET_INDEX=(1 0 2)
-MODE=("train" "test")
-AUG=("aug" "noaug")
+TAG="$(date +%Y%m%d%H%M%S)"
 
-for i in "${DATSET_INDEX[@]}"
+TEST_DATASET=("ShanghaiA" "ShanghaiB" "qnrf")
+DATSET_INDEX=(2 0 1)
+MODE=("train" "test")
+#AUG=("noaug" "aug")
+AUG=("noaug")
+
+
+for a in "${AUG[@]}"
 do
-    for a in "${AUG[@]}"
+    for i in "${DATSET_INDEX[@]}"
     do
         TEST_DATASET_NAME="${TEST_DATASET[$i]}"
         AUGMENT=""
-        if [ "$a" = "aug" ]; then
+        if [ "${a}" = "aug" ]; then
             AUGMENT="--aug"
         fi
         
     
-        DESC="train_${i}"
+        DESC="train_${i}_${a}_fixmatch"
         TEST_DATASET_PATH="npydata/${TEST_DATASET_NAME}_test.npy" 
 
         CUDA_VISIBLE_DEVICES=1 python main.py \
@@ -36,7 +40,7 @@ do
             --nesterov \
             --mu 1 \
             --temperature 0.7 \
-            --threshold 50 \
+            --threshold 0.6 \
             --lambda_u 8 \
             --warmup_steps 150 \
             --uda_steps 150 \
@@ -55,13 +59,13 @@ do
             --test_dataset "${TEST_DATASET_PATH}" \
             --description "${DESC}" \
             --do_crop \
-            --use_lr_scheduler \
             --pretrained \
             --dataset_index "${i}" \
             --use_wandb \
+            --tag ${TAG} \ 
             $AUGMENT \
 
-        DESC="test_${i}"
+        DESC="test_${i}_${a}_fixmatch"
         TEST_DATASET_PATH="npydata/${TEST_DATASET_NAME}_test.npy" 
 
         CUDA_VISIBLE_DEVICES=1 python main.py \
@@ -81,14 +85,14 @@ do
             --nesterov \
             --mu 1 \
             --temperature 0.7 \
-            --threshold 50\
+            --threshold 0.6\
             --lambda_u 8 \
             --warmup_steps 150 \
             --uda_steps 150 \
             --student_wait_steps 100 \
             --teacher_dropout 0.2 \
             --student_dropout 0.2 \
-            --finetune_epochs 200 \
+            --finetune_epochs 100 \
             --finetune_batch_size 16 \
             --finetune_lr 1e-4 \
             --finetune_weight_decay 0 \
@@ -104,6 +108,7 @@ do
             --pretrained \
             --dataset_index "${i}" \
             --use_wandb \
+            --tag ${TAG} \
             --evaluate \
             
     done

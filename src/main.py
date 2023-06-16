@@ -147,6 +147,12 @@ parser.add_argument("--pretrained", action="store_true",
 parser.add_argument("--aug", action="store_true",
                     help="use augmentation")
 
+parser.add_argument("--loss_reduction", default="mean", type=str,
+                    help='loss_reduction')
+
+parser.add_argument("--tag", default="2023", type=str,
+                    help='experiment identifier')
+
 
 def set_seed(args):
     random.seed(args.seed)
@@ -319,20 +325,18 @@ def main():
         #     t_optimizer, mode='min', factor=0.1, patience=5)
         # s_scheduler = ReduceLROnPlateau(
         #     s_optimizer, mode='min', factor=0.1, patience=5)
-        t_scheduler = get_cosine_schedule_with_warmup(t_optimizer,
-                                                      args.warmup_steps,
-                                                      args.total_steps)
-        s_scheduler = get_cosine_schedule_with_warmup(s_optimizer,
-                                                      args.warmup_steps,
-                                                      args.total_steps,
-                                                      args.student_wait_steps,)
-        t_scheduler = None
-        s_scheduler = None
+        # t_scheduler = get_cosine_schedule_with_warmup(t_optimizer,
+        #                                               args.warmup_steps,
+        #                                               args.total_steps)
+        # s_scheduler = get_cosine_schedule_with_warmup(s_optimizer,
+        #                                               args.warmup_steps,
+        #                                               args.total_steps,
+        #                                               args.student_wait_steps,)
 
-        # t_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
-        #     t_optimizer, T_max=40, eta_min=1e-6)
-        # s_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
-        #     t_optimizer, T_max=40, eta_min=1e-8)
+        t_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
+            t_optimizer, T_max=args.total_steps, eta_min=1e-8, verbose=False)
+        s_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
+            s_optimizer, T_max=args.total_steps, eta_min=1e-8, verbose=False)
     else:
         t_scheduler = None
         s_scheduler = None
@@ -399,7 +403,7 @@ def main():
         if s_scheduler is not None:
             del s_scheduler
 
-        name = f"{args.name}_{args.dataset_index}"
+        name = f"{args.tag}_{args.name}_{args.dataset_index}"
 
         ckpt_name = f'{args.save_path}/{name}_best.pth.tar'
 
@@ -424,7 +428,7 @@ def main():
         if s_scheduler is not None:
             del s_scheduler
 
-        name = f"{args.name}_{args.dataset_index}_finetune"
+        name = f"{args.tag}_{args.name}_{args.dataset_index}_finetune"
 
         ckpt_name = f'{args.save_path}/{name}_best.pth.tar'
 
@@ -462,21 +466,24 @@ def train(args, labeled_loader, unlabeled_loader, val_loader, test_loader, finet
           teacher_model, student_model, avg_student_model,
           t_optimizer, s_optimizer, t_scheduler, s_scheduler, t_scaler, s_scaler, criterion):
 
-    teacher_model.train()
+    # teacher_model.train()
 
-    finetune(args, finetune_dataset, val_loader,
-             teacher_model, criterion)
+    # finetune(args, finetune_dataset, val_loader,
+    #          teacher_model, criterion)
 
-    name = f"{args.name}_{args.dataset_index}"
+    # name = f"{args.name}_{args.dataset_index}"
 
-    ckpt_name = f'{args.save_path}/{name}_best.pth.tar'
+    # ckpt_name = f'{args.save_path}/{name}_best.pth.tar'
 
-    loc = f'cuda:{args.gpu}'
-    checkpoint = torch.load(ckpt_name, map_location=loc)
-    logger.info(f"=> loading checkpoint '{ckpt_name}'")
+    # loc = f'cuda:{args.gpu}'
+    # checkpoint = torch.load(ckpt_name, map_location=loc)
+    # logger.info(f"=> loading checkpoint '{ckpt_name}'")
 
-    model_load_state_dict(
-        teacher_model, checkpoint['student_state_dict'])
+    # model_load_state_dict(
+    #     teacher_model, checkpoint['student_state_dict'])
+
+    # model_load_state_dict(
+    #     student_model, checkpoint['student_state_dict'])
 
     args.best_loss = float('inf')
 
@@ -570,13 +577,16 @@ def train(args, labeled_loader, unlabeled_loader, val_loader, test_loader, finet
             # Set a suitable threshold value
             threshold = torch.tensor([args.threshold]).to(args.device)
 
-            # Compute the prediction difference
-            pred_diff = torch.abs(
-                pseudo_count_uw - t_logits_us.detach()).to(args.device)
+            # 예측 차이 계산
+            pred_diff = torch.abs(pseudo_count_uw - t_logits_us)
 
-            # Mask uncertain pseudo-labels
-            mask = (pred_diff <= threshold)
+            # 상대적인 차이 비율 계산
+            rel_diff = pred_diff / torch.abs(t_logits_us)
 
+            # mask 생성
+            mask = (rel_diff <= threshold)
+
+            # t_loss_u 계산
             t_loss_u = torch.mean(
                 torch.abs((pseudo_count_uw - t_logits_us)) * mask)
 
@@ -594,8 +604,8 @@ def train(args, labeled_loader, unlabeled_loader, val_loader, test_loader, finet
             del s_logits, s_images
 
             # Student loss
-            s_loss_l_old = F.l1_loss(
-                s_logits_l.detach(), targets, reduction='sum')
+            s_loss_l_old = F.smooth_l1_loss(
+                s_logits_l.detach(), targets, reduction=args.loss_reduction)
 
             s_loss = criterion(s_logits_us, t_logits_uw.detach())
 
@@ -619,12 +629,12 @@ def train(args, labeled_loader, unlabeled_loader, val_loader, test_loader, finet
             with torch.no_grad():
                 s_logits_l = student_model(images_l)
 
-            s_loss_l_new = F.l1_loss(
-                s_logits_l.detach(), targets, reduction='sum')
+            s_loss_l_new = F.smooth_l1_loss(
+                s_logits_l.detach(), targets, reduction=args.loss_reduction)
             dot_product = s_loss_l_old - s_loss_l_new
 
             t_loss_mpl = dot_product * F.smooth_l1_loss(
-                t_logits_us, t_logits_uw.detach(), reduction='sum')
+                t_logits_us, t_logits_uw.detach(), reduction=args.loss_reduction)
             t_loss = t_loss_uda + t_loss_mpl
 
         t_scaler.scale(t_loss).backward()
@@ -713,7 +723,7 @@ def train(args, labeled_loader, unlabeled_loader, val_loader, test_loader, finet
 
     # finetune
     del t_scaler, t_optimizer, teacher_model, labeled_loader, unlabeled_loader
-    del s_scaler, s_scheduler, s_optimizer
+    del s_scaler, s_optimizer
 
     if t_scheduler:
         del t_scheduler
@@ -721,10 +731,7 @@ def train(args, labeled_loader, unlabeled_loader, val_loader, test_loader, finet
     if s_scheduler:
         del s_scheduler
 
-    if args.dataset_index == -1:
-        name = args.name
-    else:
-        name = f"{args.name}_{args.dataset_index}"
+    name = f"{args.tag}_{args.name}_{args.dataset_index}"
 
     ckpt_name = f'{args.save_path}/{name}_best.pth.tar'
 

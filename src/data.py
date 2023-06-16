@@ -7,7 +7,7 @@ from torchvision import datasets
 from torchvision import transforms
 from torchvision.transforms import InterpolationMode
 
-from augmentation import RandAugment, SoftAugment
+from augmentation import RandAugment, SoftAugment, RandAugmentMC
 
 import scipy.spatial
 from PIL import Image
@@ -39,13 +39,13 @@ class TransformMPL(object):
         rh = int(args.h * args.resize)
 
         self.ori = transforms.Compose([
-            transforms.Resize((rw, rh)),
+            # transforms.Resize((rw, rh)),
             # transforms.RandomHorizontalFlip(),
 
         ])
         self.aug = transforms.Compose([
-            transforms.Resize((rw, rh)),
-            SoftAugment(n=n, m=m)])
+            # transforms.Resize((rw, rh)),
+            RandAugmentMC(n=n, m=m)])
 
         self.normalize = transforms.Compose([
             transforms.ToTensor(),

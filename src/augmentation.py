@@ -90,7 +90,7 @@ def Invert(img, **kwarg):
 
 def Posterize(img, v, max_v, bias=0):
     v = 8 - _round_parameter(v, max_v) + bias
-    return PIL.ImageOps.posterize(img, v)
+    return PIL.ImageOps.posterize(img, int(v))
 
 
 def Rotate(img, v, max_v, **kwarg):
@@ -207,7 +207,7 @@ def fixmatch_augment_pool():
         (Contrast, 0.9, 0.05),
         (Equalize, None, None),
         (Identity, None, None),
-        (Posterize, 4, 4),
+        (Posterize, 4, 0),
         (Rotate, 30, 0),
         (Sharpness, 0.9, 0.05),
         (ShearX, 0.3, 0),
