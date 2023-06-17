@@ -2,7 +2,7 @@ import torch.nn.init as init
 import pdb
 from logger import web_logger
 from utils import (AverageMeter, accuracy, create_loss_fn,
-                   save_checkpoint, reduce_tensor, model_load_state_dict)
+                   save_checkpoint, load_best_model, reduce_tensor, model_load_state_dict)
 from models.trans_crowd import base_patch16_384_token, base_patch16_384_gap
 from models.CCST import SwinTransformer_cc
 from models.models import ModelEMA
@@ -151,7 +151,10 @@ parser.add_argument("--loss_reduction", default="mean", type=str,
                     help='loss_reduction')
 
 parser.add_argument("--tag", default="2023", type=str,
-                    help='experiment identifier')
+                    help='experiment tag')
+
+parser.add_argument('--baseline', action='store_true',
+                    help='baseline test and evaluate')
 
 
 def set_seed(args):
@@ -267,7 +270,8 @@ def main():
                              num_workers=args.workers)
 
     teacher_model = base_patch16_384_gap(pretrained=args.pretrained)
-    student_model = base_patch16_384_gap(pretrained=args.pretrained)
+    student_model = base_patch16_384_gap(
+        pretrained=args.pretrained if args.baseline else False)
 
     # teacher_model = SwinTransformer_cc(
     #     pretrained=args.pretrained, home=args.home).cuda()
@@ -393,6 +397,13 @@ def main():
 
     criterion = create_loss_fn(args)
 
+    if args.baseline:
+        finetune(args, finetune_dataset, val_loader, student_model, criterion)
+        student_model = load_best_model(student_model, args)
+
+        validate(test_loader, student_model, args)
+        return
+
     if args.finetune:
         del t_scaler, t_optimizer, teacher_model, unlabeled_loader
 
@@ -403,20 +414,9 @@ def main():
         if s_scheduler is not None:
             del s_scheduler
 
-        name = f"{args.tag}_{args.name}_{args.dataset_index}"
+        student_model = load_best_model(student_model, args)
 
-        ckpt_name = f'{args.save_path}/{name}_best.pth.tar'
-
-        loc = f'cuda:{args.gpu}'
-        checkpoint = torch.load(ckpt_name, map_location=loc)
-        logger.info(f"=> loading checkpoint '{ckpt_name}'")
-        if checkpoint['avg_state_dict'] is not None:
-            model_load_state_dict(student_model, checkpoint['avg_state_dict'])
-        else:
-            model_load_state_dict(
-                student_model, checkpoint['student_state_dict'])
-
-        finetune(args, finetune_dataset, test_loader, student_model, criterion)
+        finetune(args, finetune_dataset, val_loader, student_model, criterion)
         return
 
     if args.evaluate:
@@ -428,15 +428,7 @@ def main():
         if s_scheduler is not None:
             del s_scheduler
 
-        name = f"{args.tag}_{args.name}_{args.dataset_index}_finetune"
-
-        ckpt_name = f'{args.save_path}/{name}_best.pth.tar'
-
-        loc = f'cuda:{args.gpu}'
-        checkpoint = torch.load(ckpt_name, map_location=loc)
-        logger.info(f"=> loading checkpoint '{ckpt_name}'")
-        model_load_state_dict(
-            student_model, checkpoint['student_state_dict'])
+        student_model = load_best_model(student_model, args)
 
         validate(test_loader, student_model, args)
         return
@@ -465,25 +457,6 @@ def check_nan_parameters(model):
 def train(args, labeled_loader, unlabeled_loader, val_loader, test_loader, finetune_dataset,
           teacher_model, student_model, avg_student_model,
           t_optimizer, s_optimizer, t_scheduler, s_scheduler, t_scaler, s_scaler, criterion):
-
-    # teacher_model.train()
-
-    # finetune(args, finetune_dataset, val_loader,
-    #          teacher_model, criterion)
-
-    # name = f"{args.name}_{args.dataset_index}"
-
-    # ckpt_name = f'{args.save_path}/{name}_best.pth.tar'
-
-    # loc = f'cuda:{args.gpu}'
-    # checkpoint = torch.load(ckpt_name, map_location=loc)
-    # logger.info(f"=> loading checkpoint '{ckpt_name}'")
-
-    # model_load_state_dict(
-    #     teacher_model, checkpoint['student_state_dict'])
-
-    # model_load_state_dict(
-    #     student_model, checkpoint['student_state_dict'])
 
     args.best_loss = float('inf')
 

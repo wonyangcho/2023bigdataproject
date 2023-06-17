@@ -55,10 +55,33 @@ def model_load_state_dict(model, state_dict):
         module_load_state_dict(model, state_dict)
 
 
+def load_best_model(model, args):
+
+    if args.baseline:
+        name = f"{args.tag}_{args.name}_{args.dataset_index}_baseline"
+    else:
+        name = f"{args.tag}_{args.name}_{args.dataset_index}"
+
+    ckpt_name = f'{args.save_path}/{name}_best.pth.tar'
+
+    loc = f'cuda:{args.gpu}'
+    checkpoint = torch.load(ckpt_name, map_location=loc)
+    logger.info(f"=> loading checkpoint '{ckpt_name}'")
+    if checkpoint['avg_state_dict'] is not None:
+        model_load_state_dict(model, checkpoint['avg_state_dict'])
+    else:
+        model_load_state_dict(
+            model, checkpoint['student_state_dict'])
+
+    return model
+
+
 def save_checkpoint(args, state, is_best, finetune=False):
     os.makedirs(args.save_path, exist_ok=True)
     if finetune:
         name = f'{args.tag}_{args.name}_{args.dataset_index}_finetune'
+    elif args.baseline:
+        name = f'{args.tag}_{args.name}_{args.dataset_index}_baseline'
     else:
         name = f"{args.tag}_{args.name}_{args.dataset_index}"
     filename = f'{args.save_path}/{name}_last.pth.tar'
