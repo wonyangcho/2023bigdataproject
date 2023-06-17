@@ -31,7 +31,7 @@ do
             fi
             
         
-            DESC="${m}_${i}_${a}_fixmatch"
+            DESC="${m}_${i}_${a}_fixmatch_pretrained"
             TEST_DATASET_PATH="npydata/${TEST_DATASET_NAME}_test.npy" 
 
             CUDA_VISIBLE_DEVICES=1 python main.py \
