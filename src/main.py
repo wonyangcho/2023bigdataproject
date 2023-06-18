@@ -270,8 +270,7 @@ def main():
                              num_workers=args.workers)
 
     teacher_model = base_patch16_384_gap(pretrained=args.pretrained)
-    student_model = base_patch16_384_gap(
-        pretrained=args.pretrained if args.baseline else False)
+    student_model = base_patch16_384_gap(pretrained=args.pretrained)
 
     # teacher_model = SwinTransformer_cc(
     #     pretrained=args.pretrained, home=args.home).cuda()
@@ -457,6 +456,9 @@ def check_nan_parameters(model):
 def train(args, labeled_loader, unlabeled_loader, val_loader, test_loader, finetune_dataset,
           teacher_model, student_model, avg_student_model,
           t_optimizer, s_optimizer, t_scheduler, s_scheduler, t_scaler, s_scaler, criterion):
+
+    finetune(args, finetune_dataset, val_loader, teacher_model, criterion)
+    teacher_model = load_best_model(teacher_model, args)
 
     args.best_loss = float('inf')
 
@@ -704,17 +706,7 @@ def train(args, labeled_loader, unlabeled_loader, val_loader, test_loader, finet
     if s_scheduler:
         del s_scheduler
 
-    name = f"{args.tag}_{args.name}_{args.dataset_index}"
-
-    ckpt_name = f'{args.save_path}/{name}_best.pth.tar'
-
-    loc = f'cuda:{args.gpu}'
-    checkpoint = torch.load(ckpt_name, map_location=loc)
-    logger.info(f"=> loading checkpoint '{ckpt_name}'")
-    if checkpoint['avg_state_dict'] is not None:
-        model_load_state_dict(student_model, checkpoint['avg_state_dict'])
-    else:
-        model_load_state_dict(student_model, checkpoint['student_state_dict'])
+    student_model = load_best_model(student_model, args)
     finetune(args, finetune_dataset, val_loader, student_model, criterion)
 
 
