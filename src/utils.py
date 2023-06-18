@@ -78,9 +78,7 @@ def load_best_model(model, args):
 
 def save_checkpoint(args, state, is_best, finetune=False):
     os.makedirs(args.save_path, exist_ok=True)
-    if finetune:
-        name = f'{args.tag}_{args.name}_{args.dataset_index}_finetune'
-    elif args.baseline:
+    if args.baseline:
         name = f'{args.tag}_{args.name}_{args.dataset_index}_baseline'
     else:
         name = f"{args.tag}_{args.name}_{args.dataset_index}"
